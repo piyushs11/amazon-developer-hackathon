@@ -1,0 +1,25 @@
+# Replace @dev1..@dev4 with GitHub usernames
+/contracts/                    @dev1 @dev2 @dev3 @dev4
+/backend/app/resolver/         @dev1
+/backend/app/spec/             @dev1
+/backend/app/mapper/           @dev1
+/backend/app/db/registry/      @dev1
+/mock-services/catalog/        @dev1
+/backend/app/codegen/          @dev2
+/backend/app/pipeline/         @dev2
+/backend/app/storage/          @dev2
+/runtime/client.py             @dev2
+/backend/app/auth/             @dev3
+/backend/app/deploy/           @dev3
+/runtime/tokens.py             @dev3
+/runtime/adapter.py            @dev3
+/mock-services/demo-api/       @dev3
+/mock-services/oauth/          @dev3
+/infra/                        @dev3
+/backend/app/api/              @dev4
+/backend/app/core/             @dev4
+/backend/app/main.py           @dev4
+/frontend/                     @dev4
+/simulator/                    @dev4
+/docs/                         @dev4
+/.github/                      @dev4

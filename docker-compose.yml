@@ -1,0 +1,14 @@
+services:
+  # ---- Dev 1 ----
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: mcpbridge
+      POSTGRES_PASSWORD: mcpbridge
+      POSTGRES_DB: mcpbridge
+    ports: ["5432:5432"]
+
+  # catalog:            # Dev 1 — mock-services/catalog on :9200
+  # ---- Dev 3 ----
+  # demo-api:           # Dev 3 — mock-services/demo-api on :9000
+  # oauth:              # Dev 3 — mock-services/oauth on :9100

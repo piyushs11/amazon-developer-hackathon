@@ -1,0 +1,22 @@
+[project]
+name = "mcp-bridge"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi",
+  "uvicorn",
+  "pydantic>=2",
+  "httpx",
+  "jinja2",
+  "psycopg[binary]",
+  # "mcp==<PIN ON DAY 0>",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio", "respx", "ruff"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "backend/tests"]
+
+[tool.ruff]
+line-length = 100
