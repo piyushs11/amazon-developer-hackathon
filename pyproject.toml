@@ -15,6 +15,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest", "pytest-asyncio", "respx", "ruff"]
 
+[tool.setuptools.packages.find]
+include = ["backend*", "contracts*", "runtime*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests", "backend/tests"]
 
