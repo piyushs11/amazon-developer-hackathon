@@ -1,0 +1,4 @@
+fastmcp==4.0.10
+mcp[cli]==2.2.0
+httpx==0.28.1
+pyyaml

@@ -1,0 +1,6 @@
+api:
+  ralph_store: https://api.kroger.com/v1
+endpoint:
+  ralph_auth: connect/oauth2/token 
+params:
+  stores_param: {"filter.zipCode.near": "92101", "filter.chain": "Ralphs"}   
