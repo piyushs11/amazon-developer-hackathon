@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-# TODO Day 0: MappedService, CallContext, ToolResult,
+# TODO Day 0: CallContext, ToolResult,
 #             DeployRequest, DeployResult, RegisterResult, StepError,
 #             GenerationResult, PublishResult
 
@@ -40,3 +40,32 @@ class ServiceSpec(BaseModel):
     auth_type: str
     oauth: OAuthConfig | None = None
     endpoints: list[EndpointSpec]
+
+
+# ---- C2: MappedService (mapper -> codegen) ----
+
+class MappedParam(BaseModel):
+    name: str  # valid Python identifier, never a keyword
+    wire_name: str | None = None  # original catalog name, set only when it differs from name
+    python_type: str
+    json_type: str
+    required: bool
+    location: Literal["path", "query", "header", "body"]
+    description: str
+
+
+class MappedEndpoint(BaseModel):
+    endpoint_id: str  # original catalog id
+    tool_name: str  # valid Python identifier, never a keyword
+    method: str
+    description: str
+    path_template: str  # no base URL; placeholders use param names
+    read_only: bool
+    params: list[MappedParam]  # required before optional
+    input_schema: dict
+
+
+class MappedService(BaseModel):
+    service_uuid: str
+    service_name: str
+    endpoints: list[MappedEndpoint]
