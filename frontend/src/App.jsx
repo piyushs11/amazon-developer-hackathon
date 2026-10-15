@@ -2,6 +2,7 @@ import { Route, Routes } from 'react-router-dom';
 import { ToastProvider } from './components/Toast.jsx';
 import Launcher from './launcher/Launcher.jsx';
 import OwnerApp from './owner/OwnerApp.jsx';
+import ReviewApp from './review/ReviewApp.jsx';
 import './launcher/launcher.css';
 
 export default function App() {
@@ -10,6 +11,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Launcher />} />
         <Route path="/owner/*" element={<OwnerApp />} />
+        <Route path="/review/*" element={<ReviewApp />} />
         <Route path="*" element={<Launcher />} />
       </Routes>
     </ToastProvider>
