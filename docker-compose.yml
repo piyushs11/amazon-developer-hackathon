@@ -9,6 +9,43 @@ services:
     ports: ["5432:5432"]
 
   # catalog:            # Dev 1 — mock-services/catalog on :9200
+
   # ---- Dev 3 ----
-  # demo-api:           # Dev 3 — mock-services/demo-api on :9000
-  # oauth:              # Dev 3 — mock-services/oauth on :9100
+  demo-api:             # fake Demo Bistro API
+    build: ./mock-services
+    environment: { APP: demo-api, PORT: "9000" }
+    ports: ["9000:9000"]
+
+  oauth:                # fake OAuth provider
+    build: ./mock-services
+    environment: { APP: oauth, PORT: "9100" }
+    ports: ["9100:9100"]
+
+  # API + MCP gateway in Docker. Locally `make dev` runs uvicorn on the host instead,
+  # so this only starts with a profile: `docker compose --profile app up` (or ec2).
+  app:
+    profiles: ["app", "ec2"]
+    build: { context: ., dockerfile: infra/Dockerfile }
+    env_file: [{ path: .env, required: false }]
+    environment:
+      DATABASE_URL: postgresql://mcpbridge:mcpbridge@postgres:5432/mcpbridge
+      # Bundles and the spec say localhost:9000/9100; inside Docker the mocks have service names.
+      UPSTREAM_REWRITES: http://localhost:9000=http://demo-api:9000,http://localhost:9100=http://oauth:9100
+    ports: ["8000:8000"]
+    depends_on: [postgres, demo-api, oauth]
+    restart: unless-stopped
+
+  caddy:                # HTTPS on EC2 (needs DOMAIN in .env and DNS pointing here)
+    profiles: ["ec2"]
+    image: caddy:2
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [app]
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
