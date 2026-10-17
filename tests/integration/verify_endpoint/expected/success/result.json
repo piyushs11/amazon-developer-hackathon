@@ -1,0 +1,15 @@
+{
+  "outcome": "verified",
+  "llm_call_sequence": [
+    "get_order_statusfordemo_bistro"
+  ],
+  "api_requests": [
+    {
+      "method": "GET",
+      "path": "/orders/A1042",
+      "authorization": "Bearer demo-dev-token"
+    }
+  ],
+  "failure_mentions_http_401": false,
+  "emails": []
+}

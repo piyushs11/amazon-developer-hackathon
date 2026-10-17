@@ -1,0 +1,10 @@
+[
+  {
+    "service_uuid": "11111111-1111-1111-1111-111111111111",
+    "business_name": "Demo Bistro Pvt Ltd",
+    "service_names": [
+      "Demo Bistro"
+    ],
+    "email": "owner@demobistro.example"
+  }
+]

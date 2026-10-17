@@ -1,0 +1,6 @@
+{
+  "service_name": "Demo Bistro",
+  "tool_name": "get_order_status",
+  "service_uuid": "11111111-1111-1111-1111-111111111111",
+  "report": "Tool: get_order_status\nInput: {\"order_id\": \"A1042\"}\nOutput received: {\"message\": \"request to get_order_status failed\", \"status\": 401}\nError: request to get_order_status failed (HTTP status 401)\n\nThe following is the error. Check the tool definition, the input calling format, debug, and verify from the tool endpoint details."
+}

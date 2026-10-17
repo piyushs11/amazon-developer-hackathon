@@ -5,7 +5,8 @@
 Storage interface: local folder and S3.
 
 ## Input
-TODO
+
+read the storages n getthe serive/data
 
 ## Output
 TODO

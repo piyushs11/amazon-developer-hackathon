@@ -1,0 +1,4 @@
+{
+  "transport": "ses",
+  "ses_error": "Throttling: Maximum sending rate exceeded"
+}
