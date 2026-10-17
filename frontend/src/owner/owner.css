@@ -1,0 +1,25 @@
+/* Owner Portal page styles (from owner.html), scoped to body.owner-page */
+body.owner-page .status-card{display:flex;gap:24px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+body.owner-page .status-card .last{font-size:13px;color:var(--fg-2)}
+body.owner-page .status-card .last b{color:var(--fg);font-size:12px;letter-spacing:.02em;margin-right:6px}
+body.owner-page .res-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+body.owner-page .res-grid .card{display:flex;flex-direction:column;gap:8px;padding:18px;color:var(--fg)}
+body.owner-page .res-grid a.card:hover{text-decoration:none;border-color:var(--blue)}
+body.owner-page .res-grid .card .row{color:var(--blue);font-weight:700}
+body.owner-page .res-grid .card .i{color:var(--blue)}
+body.owner-page .res-grid .card p{color:var(--fg-2);font-size:13px;flex:1}
+body.owner-page .wiz-foot{display:flex;justify-content:space-between;gap:10px;margin-top:28px;padding-top:20px;border-top:1px solid var(--line-2);flex-wrap:wrap}
+body.owner-page .wiz-foot .right{display:flex;gap:10px;margin-left:auto}
+body.owner-page .summary-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+body.owner-page .summary-list li{display:flex;gap:10px;align-items:flex-start}
+body.owner-page .summary-list .i{color:var(--success);margin-top:1px}
+body.owner-page .popover{position:absolute;right:16px;top:60px;background:#fff;color:var(--fg);border:1px solid var(--line);border-radius:var(--r-m);min-width:240px;padding:8px;box-shadow:0 8px 24px rgba(1,11,19,.16);z-index:50}
+body.owner-page .popover .who{padding:10px 12px;border-bottom:1px solid var(--line-2);margin-bottom:6px}
+body.owner-page .popover .who b{display:block}
+body.owner-page .popover .who span{color:var(--fg-2);font-size:12px}
+body.owner-page .popover button{display:block;width:100%;text-align:left;padding:10px 12px;border-radius:8px}
+body.owner-page .popover button:hover{background:var(--fill)}
+body.owner-page .reason{margin-top:12px}
+body.owner-page .ep-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+body.owner-page .ep-list li{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+body.owner-page .ep-list code{font-weight:700}
