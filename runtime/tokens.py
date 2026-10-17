@@ -1,10 +1,4 @@
-"""Dev 3: TokenProvider implementations (C4).
 
-runtime/client.py calls `get_token_provider().get_valid_token(ctx.user_id, ctx.service_uuid)`
-on every upstream request. The provider is process configuration (picked by
-TOKEN_PROVIDER, or injected by the app at startup); it never holds per-user state
-outside the token store. This module must not import `backend`.
-"""
 from __future__ import annotations
 
 import asyncio
@@ -100,3 +94,6 @@ def get_token_provider():
             )
         _provider = FakeTokenProvider()
     return _provider
+"""Dev 3: TokenProvider implementations (C4)."""
+#reads tokens from the auth vault for the service
+

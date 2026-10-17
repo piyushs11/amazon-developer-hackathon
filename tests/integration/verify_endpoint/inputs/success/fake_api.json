@@ -1,0 +1,14 @@
+{
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/orders/A1042",
+      "requires_token": "demo-dev-token",
+      "status": 200,
+      "body": {
+        "order_id": "A1042",
+        "status": "preparing"
+      }
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "outcome": "failed",
+  "llm_call_sequence": [
+    "get_order_statusfordemo_bistro",
+    "submit_patch",
+    "get_order_statusfordemo_bistro",
+    "submit_patch",
+    "get_order_statusfordemo_bistro",
+    "submit_patch",
+    "get_order_statusfordemo_bistro",
+    "submit_patch",
+    "get_order_statusfordemo_bistro",
+    "submit_patch"
+  ],
+  "api_requests": [
+    {
+      "method": "GET",
+      "path": "/orders/A1042",
+      "authorization": "Bearer wrong-dev-token"
+    },
+    {
+      "method": "GET",
+      "path": "/orders/A1042",
+      "authorization": "Bearer wrong-dev-token"
+    },
+    {
+      "method": "GET",
+      "path": "/orders/A1042",
+      "authorization": "Bearer wrong-dev-token"
+    },
+    {
+      "method": "GET",
+      "path": "/orders/A1042",
+      "authorization": "Bearer wrong-dev-token"
+    },
+    {
+      "method": "GET",
+      "path": "/orders/A1042",
+      "authorization": "Bearer wrong-dev-token"
+    }
+  ],
+  "failure_mentions_http_401": true,
+  "emails": [
+    {
+      "to": "support@amazon.example",
+      "cc": null,
+      "attachments": [
+        "get_order_status.py"
+      ]
+    }
+  ]
+}

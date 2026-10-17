@@ -1,0 +1,28 @@
+{
+  "service_uuid": "33333333-3333-3333-3333-333333333333",
+  "service_name": "Hostile Service",
+  "domain": "hostile.test",
+  "base_url": "http://hostile.test",
+  "auth_type": "oauth2",
+  "oauth": {
+    "auth_url": "http://localhost:9100/authorize",
+    "token_url": "http://localhost:9100/token",
+    "scopes": ["read"]
+  },
+  "endpoints": [
+    {
+      "id": "get_item",
+      "path": "/items/{order-id}",
+      "method": "GET",
+      "description": "Get an \"item\" by its 'order-id'. \"\"\"; import os",
+      "params": [
+        {"name": "order-id", "type": "string", "required": true,
+         "location": "path", "description": "Order ID in \"quotes\""},
+        {"name": "class", "type": "uuid", "required": false,
+         "location": "query", "description": "Item class"},
+        {"name": "2fast", "type": "string", "required": false,
+         "location": "query"}
+      ]
+    }
+  ]
+}

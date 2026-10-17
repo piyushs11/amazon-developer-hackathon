@@ -8,6 +8,8 @@ dependencies = [
   "pydantic>=2",
   "httpx",
   "jinja2",
+  "boto3",
+  "redis",
   "psycopg[binary]",
   # "mcp==<PIN ON DAY 0>",
   # ---- Dev 3: auth + gateway ----
@@ -29,3 +31,5 @@ asyncio_mode = "auto"
 
 [tool.ruff]
 line-length = 100
+# integration-test data (expected generated code, sample inputs) is compared byte for byte; never lint/fix it
+extend-exclude = ["tests/integration/*/expected", "tests/integration/*/inputs"]
