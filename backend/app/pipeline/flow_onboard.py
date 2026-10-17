@@ -18,7 +18,7 @@ from backend.app.codegen.templates.services_consolidation_template import SERVIC
 from backend.app.codegen.verifier.utilities import service_slug, verify_service
 from backend.app.storage.add_n_read_mcp_tool import Storage, get_storage
 from backend.app.storage.tool_cache import ToolCache
-from backend.versioning_updation.utilities import _next_version
+from backend.app.versioning_updation.utilities import _next_version
 
 CREATE_FOLDERS = Path(__file__).resolve().parents[1] / "codegen" / "create_folders.sh"
 MAX_MESSAGE = 300

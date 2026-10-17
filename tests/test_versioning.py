@@ -1,7 +1,7 @@
 import pytest
 
 from backend.app.storage.add_n_read_mcp_tool import LocalStorage
-from backend.versioning_updation.utilities import VersionBuilder
+from backend.app.versioning_updation.utilities import VersionBuilder
 
 UUID = "11111111-1111-1111-1111-111111111111"
 
