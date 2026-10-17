@@ -25,3 +25,6 @@ generated/
 .DS_Store
 .idea/
 .vscode/
+
+# Bundle cache (runtime/loader.py)
+.cache/

@@ -1,0 +1,13 @@
+{
+  "service_uuid": "44444444-4444-4444-4444-444444444444",
+  "service_name": "Hostile Empty",
+  "domain": "hostile-empty.test",
+  "base_url": "http://hostile-empty.test",
+  "auth_type": "oauth2",
+  "oauth": {
+    "auth_url": "http://localhost:9100/authorize",
+    "token_url": "http://localhost:9100/token",
+    "scopes": ["read"]
+  },
+  "endpoints": []
+}

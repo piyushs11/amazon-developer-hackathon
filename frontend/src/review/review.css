@@ -1,0 +1,30 @@
+/* Review Console page styles (from review.html), scoped to body.review-page */
+body.review-page .queue-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+body.review-page .queue-sum .tile{display:flex;flex-direction:column;gap:4px;padding:14px 16px}
+body.review-page .queue-sum .tile .n{font:400 28px/32px var(--font-display)}
+body.review-page .queue-sum .tile .l{color:var(--fg-2);font-size:13px}
+body.review-page .secret{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+body.review-page .secret code{background:var(--fill);padding:4px 8px;border-radius:4px}
+body.review-page .sim-wrap{border:1px solid var(--line);border-radius:var(--r-l);overflow:hidden;background:#fff;display:flex;flex-direction:column;height:min(640px,calc(100vh - 220px));min-height:420px}
+body.review-page .sim-head{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line-2);font-size:13px;flex-wrap:wrap}
+body.review-page .sim-head .who{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+body.review-page .sim-head .who b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.review-page .sim-foot{display:flex;align-items:center;gap:6px;padding:10px 12px;border-top:1px solid var(--line-2)}
+body.review-page .sim-foot .ask{flex:1;min-width:0;box-shadow:none;border-color:var(--line)}
+body.review-page .sim-foot .ask:focus-within{box-shadow:0 0 0 3px var(--blue-tint-2)}
+body.review-page .toggle-row{display:flex;align-items:center;gap:8px;font-size:13px}
+body.review-page .toggle-row .switch{width:36px;height:22px}
+body.review-page .toggle-row .switch::after{width:18px;height:18px}
+body.review-page .toggle-row .switch[aria-checked="true"]::after{transform:translateX(14px)}
+body.review-page .popover{position:absolute;right:16px;top:60px;background:#fff;color:var(--fg);border:1px solid var(--line);border-radius:var(--r-m);min-width:260px;padding:8px;box-shadow:0 8px 24px rgba(1,11,19,.16);z-index:50}
+body.review-page .popover .who{padding:10px 12px;border-bottom:1px solid var(--line-2);margin-bottom:6px}
+body.review-page .popover .who b{display:block}
+body.review-page .popover .who span{color:var(--fg-2);font-size:12px}
+body.review-page .popover button{display:block;width:100%;text-align:left;padding:10px 12px;border-radius:8px}
+body.review-page .popover button:hover{background:var(--fill)}
+body.review-page .guide li{margin-bottom:8px}
+body.review-page .cl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+body.review-page .decision{display:flex;gap:10px;flex-wrap:wrap}
+body.review-page .ep-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+body.review-page .ep-list li{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+body.review-page .ep-list code{font-weight:700}

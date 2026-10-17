@@ -1,0 +1,12 @@
+{$DOMAIN} {
+	# Fake OAuth authorize page, reachable from the user's browser on EC2.
+	# Set AUTHORIZE_REWRITES=http://localhost:9100=https://{$DOMAIN}/mock-oauth for the app.
+	handle_path /mock-oauth/* {
+		reverse_proxy oauth:9100
+	}
+
+	# API + MCP gateway (/auth, /api, /oauth, /mcp/{service_uuid}, /health)
+	handle {
+		reverse_proxy app:8000
+	}
+}

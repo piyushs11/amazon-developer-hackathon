@@ -1,0 +1,109 @@
+{
+  "service_uuid": "11111111-1111-1111-1111-111111111111",
+  "service_name": "Demo Bistro",
+  "base_url": "${FAKE_API_URL}",
+  "endpoints": [
+    {
+      "endpoint_id": "search_menu",
+      "tool_name": "search_menu",
+      "method": "GET",
+      "description": "Find dishes on the menu by a search phrase.",
+      "path_template": "/menu/search",
+      "read_only": true,
+      "params": [
+        {
+          "name": "query",
+          "python_type": "str",
+          "json_type": "string",
+          "required": true,
+          "location": "query",
+          "description": "Search phrase, e.g. pizza"
+        }
+      ],
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search phrase, e.g. pizza"
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "endpoint_id": "get_order_status",
+      "tool_name": "get_order_status",
+      "method": "GET",
+      "description": "Get the status of an order by its ID.",
+      "path_template": "/orders/{order_id}",
+      "read_only": true,
+      "params": [
+        {
+          "name": "order_id",
+          "python_type": "str",
+          "json_type": "string",
+          "required": true,
+          "location": "path",
+          "description": "Order ID, e.g. A1042"
+        }
+      ],
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "description": "Order ID, e.g. A1042"
+          }
+        },
+        "required": [
+          "order_id"
+        ]
+      }
+    },
+    {
+      "endpoint_id": "place_order",
+      "tool_name": "place_order",
+      "method": "POST",
+      "description": "Place a new order for a menu item.",
+      "path_template": "/orders",
+      "read_only": false,
+      "params": [
+        {
+          "name": "item",
+          "python_type": "str",
+          "json_type": "string",
+          "required": true,
+          "location": "body",
+          "description": "Menu item name"
+        },
+        {
+          "name": "quantity",
+          "python_type": "int",
+          "json_type": "integer",
+          "required": false,
+          "location": "body",
+          "description": "How many to order"
+        }
+      ],
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "description": "Menu item name"
+          },
+          "quantity": {
+            "type": "integer",
+            "description": "How many to order"
+          }
+        },
+        "required": [
+          "item"
+        ]
+      }
+    }
+  ]
+}

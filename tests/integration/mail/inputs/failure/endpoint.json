@@ -1,0 +1,6 @@
+{
+  "tool_name": "get_order_status",
+  "method": "GET",
+  "path_template": "/orders/{order_id}",
+  "read_only": true
+}

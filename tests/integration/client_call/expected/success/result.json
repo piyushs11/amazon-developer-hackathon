@@ -1,0 +1,13 @@
+{
+  "response": {
+    "order_id": "A1042",
+    "status": "preparing"
+  },
+  "api_requests": [
+    {
+      "method": "GET",
+      "path": "/orders/A1042",
+      "authorization": "Bearer alice-token"
+    }
+  ]
+}

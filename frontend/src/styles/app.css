@@ -1,0 +1,7 @@
+/* Glue for running the prototype pages as one single-page app.
+   The prototype pages each owned <body>; here every portal lives inside #root. */
+#root{min-height:100vh;display:flex;flex-direction:column}
+#root > .console{flex:1}
+/* In a flex column, auto side margins shrink an item to its content. The client column must
+   still fill up to its max-width, as it did as a plain block in the prototype. */
+#root > .app{width:100%}
