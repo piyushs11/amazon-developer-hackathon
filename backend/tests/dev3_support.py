@@ -1,21 +1,18 @@
 """Shared fixtures for Dev 3 tests (auth + gateway). Everything runs in-process:
 the mock demo-api and fake OAuth apps are reached through httpx.ASGITransport.
 
-runtime/client.py (Dev 2) may still be empty, so per the plan the hand-written
-bundle runs against a STUB call_api installed here.
+The bundle is Dev 2's generated Demo Bistro bundle. Its tools call
+http://localhost:9000 with httpx; `route_upstream` sends that traffic to the demo-api
+app in-process and records each request (method, url, bearer token).
 """
 import importlib.util
-import json
 import shutil
 import sys
 from pathlib import Path
-from urllib.parse import quote
 
 import httpx
 import pytest
 from fastapi import FastAPI
-
-from contracts.models import ToolResult
 
 ROOT = Path(__file__).resolve().parents[2]
 DEMO_UUID = "11111111-1111-1111-1111-111111111111"
@@ -37,49 +34,46 @@ oauth_app = _load_app("mock-services/oauth/main.py", "mock_oauth")
 
 
 class UpstreamLog:
-    """What the stub call_api sent upstream (method, url, bearer token)."""
+    """What the generated tools sent to the demo API (method, url, bearer token)."""
 
     def __init__(self):
         self.calls: list[dict] = []
 
 
 upstream = UpstreamLog()
+_RealAsyncClient = httpx.AsyncClient
 
 
-async def stub_call_api(ctx, method, path_template, *, path=None, query=None, body=None,
-                        headers=None):
-    from runtime.tokens import get_token_provider
+class _DemoApiTransport(httpx.ASGITransport):
+    def __init__(self):
+        super().__init__(app=demo_api_app)
 
-    token = await get_token_provider().get_valid_token(ctx.user_id, ctx.service_uuid)
-    encoded = {k: quote(str(v), safe="") for k, v in (path or {}).items()}
-    url = ctx.base_url + path_template.format(**encoded)
-    query = {k: v for k, v in (query or {}).items() if v is not None}
-    body = {k: v for k, v in (body or {}).items() if v is not None} or None
-    upstream.calls.append({"user_id": ctx.user_id, "method": method, "url": url, "token": token})
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=demo_api_app)) as client:
-        resp = await client.request(method, url, params=query, json=body,
-                                    headers={"Authorization": f"Bearer {token}"})
-    if resp.status_code >= 400:
-        return ToolResult(text=f"The service answered with an error ({resp.status_code}).",
-                          is_error=True)
-    data = resp.json()
-    if "status" in data and "order_id" in data:
-        return ToolResult(text=f"Order {data['order_id']} is {data['status']}.", data=data)
-    return ToolResult(text=json.dumps(data)[:200], data=data)
+    async def handle_async_request(self, request):
+        upstream.calls.append({
+            "method": request.method,
+            "url": str(request.url),
+            "token": request.headers.get("authorization", "").removeprefix("Bearer "),
+        })
+        return await super().handle_async_request(request)
+
+
+class _RoutedAsyncClient(_RealAsyncClient):
+    """httpx.AsyncClient() with no transport (what generated tools use) -> demo-api app."""
+
+    def __init__(self, *args, **kwargs):
+        if kwargs.get("transport") is None:
+            kwargs["transport"] = _DemoApiTransport()
+        super().__init__(*args, **kwargs)
 
 
 @pytest.fixture(autouse=True)
-def stub_runtime_client(monkeypatch):
-    from runtime import client
-
-    if not hasattr(client, "call_api"):  # Dev 2's real call_api not merged yet
-        monkeypatch.setattr(client, "call_api", stub_call_api, raising=False)
-        monkeypatch.setattr(client, "ToolResult", ToolResult, raising=False)
+def route_upstream(monkeypatch):
+    monkeypatch.setattr(httpx, "AsyncClient", _RoutedAsyncClient)
     upstream.calls.clear()
 
 
 @pytest.fixture
-def dev3_env(monkeypatch, tmp_path):
+def dev3_env(monkeypatch):
     """Fresh Dev 3 configuration per test. Override env vars before calling `configure`."""
     from backend.app.auth import factory, oauth
     from backend.app.gateway import bundles
@@ -97,7 +91,6 @@ def dev3_env(monkeypatch, tmp_path):
         "GATEWAY_URL": "http://gw.test",
         "API_URL": "http://api.test",
         "FRONTEND_URL": "http://ui.test",
-        "BUNDLE_CACHE_DIR": str(tmp_path / "cache"),
     }
     for key, value in env.items():
         monkeypatch.setenv(key, value)
@@ -173,10 +166,7 @@ async def connect(user_id: str, service_uuid: str = DEMO_UUID) -> None:
 def copy_bundle(tmp_path: Path, version: str, *, edit=None) -> Path:
     """A copy of the fixture bundle as a new version, optionally edited."""
     dest = tmp_path / "bundles" / DEMO_UUID / version
-    shutil.copytree(FIXTURE_BUNDLE, dest, ignore=shutil.ignore_patterns("__pycache__"))
-    manifest = json.loads((dest / "manifest.json").read_text())
-    manifest["version"] = version
-    (dest / "manifest.json").write_text(json.dumps(manifest))
+    shutil.copytree(FIXTURE_BUNDLE, dest, ignore=shutil.ignore_patterns("__pycache__", "*.md"))
     if edit:
         edit(dest)
     return dest

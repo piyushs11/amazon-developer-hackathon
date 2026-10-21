@@ -2,6 +2,8 @@
 
 This is the check that MCP Inspector / Alexa+ style clients can use /mcp/{uuid}.
 """
+import json
+
 import httpx2
 import pytest
 
@@ -31,4 +33,4 @@ async def test_official_client_lists_and_calls(app):
 
             result = await session.call_tool("get_order_status", {"order_id": "A1042"})
             assert not result.is_error
-            assert result.content[0].text == "Order A1042 is ready for pickup."
+            assert json.loads(result.content[0].text)["status"] == "ready for pickup"

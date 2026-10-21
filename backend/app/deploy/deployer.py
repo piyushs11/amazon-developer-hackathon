@@ -1,7 +1,11 @@
 """C5: publish a bundle version to the gateway, and register it with Alexa+ (mocked).
 
+publish() (Dev 2) calls deploy(DeployRequest(service_uuid, version, bundle_path)) where
+version is the 12-char content hash and bundle_path is bundles/{uuid}/{version}/ locally
+or an s3:// path in MODE=aws.
+
 GatewayDeployer.deploy():
-  1. the bundle must load cleanly and expose TOOLS (runtime/loader.py)
+  1. every tool file of the bundle must load (runtime/loader.py)
   2. only then mark it active in the registry -> next MCP call uses it, no restart
 If step 1 fails, the previously active version stays active.
 """
@@ -38,11 +42,11 @@ class GatewayDeployer:
         if current and current.version == req.version and current.bundle_path == req.bundle_path:
             return DeployResult(mcp_url=url, version=req.version, status="deployed")  # idempotent
 
-        spec_hash = str(bundle.manifest.get("spec_hash", ""))
         try:
+            # C5 carries no spec hash; publish() can record one in the registry itself.
             await asyncio.to_thread(
                 registry.set_active_version,
-                req.service_uuid, req.version, req.bundle_path, spec_hash,
+                req.service_uuid, req.version, req.bundle_path, "",
             )
         except LookupError as exc:
             return DeployResult(mcp_url=url, version=req.version, status="failed", error=str(exc))
