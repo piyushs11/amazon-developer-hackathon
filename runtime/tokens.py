@@ -1,4 +1,12 @@
+"""Dev 3: TokenProvider implementations (C4). Reads users' tokens from the auth vault.
 
+The gateway asks `get_token_provider().get_valid_token(user_id, service_uuid)` before every
+tool call and puts the token in runtime.auth_context (generated tools read it with
+get_current_token()). `fetch_token` has the shape of Dev 2's `token_fetcher`, so call_api and
+run_tool_call can use this provider instead of their default fetcher.
+The provider is process configuration (TOKEN_PROVIDER, or injected at startup); it holds no
+per-user state outside the token store. This module must not import `backend`.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -94,6 +102,11 @@ def get_token_provider():
             )
         _provider = FakeTokenProvider()
     return _provider
-"""Dev 3: TokenProvider implementations (C4)."""
-#reads tokens from the auth vault for the service
 
+
+async def fetch_token(user_id: str, service_uuid: str) -> str | None:
+    """Dev 2's token_fetcher(user_id, service_id): the user's valid token, or None if not connected."""
+    try:
+        return await get_token_provider().get_valid_token(user_id, service_uuid)
+    except TokenError:
+        return None

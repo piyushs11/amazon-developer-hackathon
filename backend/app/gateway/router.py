@@ -10,7 +10,7 @@ import logging
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
 
-from backend.app.auth.factory import get_identity
+from backend.app.auth.factory import get_identity, get_service_directory
 from backend.app.auth.identity import bearer_token
 from backend.app.gateway import mcp
 from backend.app.gateway.bundles import get_registry
@@ -18,6 +18,17 @@ from runtime import loader
 
 log = logging.getLogger("mcp_bridge.gateway")
 router = APIRouter(tags=["gateway"])
+
+
+def _display_name(service_uuid: str, bundle: loader.LoadedBundle) -> str:
+    """"Demo Bistro" from the service directory; falls back to the bundle's slug."""
+    try:
+        info = get_service_directory().get(service_uuid)
+    except Exception:  # noqa: BLE001 — a name lookup must never fail the call
+        info = None
+    if info is not None:
+        return info.service_name
+    return (bundle.service_name or "this service").replace("_", " ").title()
 
 
 def _rpc_error(rpc_id, code: int, message: str, status: int = 200) -> JSONResponse:
@@ -69,7 +80,8 @@ async def mcp_endpoint(service_uuid: str, request: Request) -> Response:
                   service_uuid, active.version, exc)
         return _rpc_error(rpc_id, mcp.INTERNAL_ERROR, "service is temporarily unavailable")
 
-    req = mcp.Request(user_id, service_uuid, active.base_url, bundle)
+    service_name = await asyncio.to_thread(_display_name, service_uuid, bundle)
+    req = mcp.Request(user_id, service_uuid, service_name, bundle)
     try:
         result = await mcp.dispatch(req, method, params)
     except mcp.RpcError as exc:

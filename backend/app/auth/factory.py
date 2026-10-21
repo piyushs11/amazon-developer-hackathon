@@ -86,7 +86,7 @@ def configure() -> None:
     """Startup hook: make runtime/client.py use this process's token provider."""
     import logging
 
-    from runtime import stub_client
+    from runtime import loader
 
     app_log = logging.getLogger("mcp_bridge")  # gateway/deploy logs (never tokens)
     if not app_log.handlers:
@@ -95,4 +95,7 @@ def configure() -> None:
         app_log.addHandler(handler)
         app_log.setLevel(logging.INFO)
     runtime_tokens.set_token_provider(get_token_provider())
-    stub_client.install_if_missing()  # no-op once Dev 2's call_api is merged
+    if get_settings().mode == "aws":  # s3:// bundle paths are read through Dev 2's S3Storage
+        from backend.app.storage.add_n_read_mcp_tool import get_storage
+
+        loader.set_reader(get_storage())
