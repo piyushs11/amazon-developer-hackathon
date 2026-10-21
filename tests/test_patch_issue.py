@@ -167,3 +167,20 @@ def test_end_to_end_failing_tool_is_patched_then_verified(seeded, monkeypatch):
     )
     assert out == "verified" and Stub.calls == 3  # test, patch, test
     assert seeded.get_source("demo_bistro", "get_thing") == fixed
+
+
+def test_verify_rejects_patch_that_hardcodes_the_service_url(cache):
+    """The URL must keep coming from the registry at call time, not from the tool's code."""
+    src = SRC.replace(
+        '    path = "/thngs/{thing_id}".format(thing_id=thing_id)\n',
+        '    base = get_current_base_url()\n    path = "/thngs/{thing_id}".format(thing_id=thing_id)\n',
+    ).replace("import get_current_token", "import get_current_base_url, get_current_token")
+    cache.set_source("demo_bistro", "get_thing", src)
+    hardcode = {"old": "    base = get_current_base_url()\n", "new": '    base = "http://localhost:9000"\n',
+                "line": 8, "reason": "x"}
+    out = verify_changes(
+        "demo_bistro", "get_thing", [hardcode],
+        src.replace("base = get_current_base_url()", 'base = "http://localhost:9000"'), cache=cache,
+    )
+    assert out["status"] == "not_verified" and "get_current_base_url()" in out["reason"]
+    assert cache.get_source("demo_bistro", "get_thing") == src

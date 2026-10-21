@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from backend.app.auth.factory import get_identity, get_service_directory
 from backend.app.auth.identity import bearer_token
+from backend.app.auth.settings import get_settings, rewrite
 from backend.app.gateway import mcp
 from backend.app.gateway.bundles import get_registry
 from runtime import loader
@@ -81,7 +82,10 @@ async def mcp_endpoint(service_uuid: str, request: Request) -> Response:
         return _rpc_error(rpc_id, mcp.INTERNAL_ERROR, "service is temporarily unavailable")
 
     service_name = await asyncio.to_thread(_display_name, service_uuid, bundle)
-    req = mcp.Request(user_id, service_uuid, service_name, bundle)
+    # The tools take their base URL from here, not from their code. In Docker the registry says
+    # http://localhost:9000; UPSTREAM_REWRITES turns that into http://demo-api:9000.
+    base_url = rewrite(active.base_url, get_settings().upstream_rewrites)
+    req = mcp.Request(user_id, service_uuid, service_name, bundle, base_url)
     try:
         result = await mcp.dispatch(req, method, params)
     except mcp.RpcError as exc:

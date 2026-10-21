@@ -6,9 +6,12 @@ generated tools can be verified before any real user connects. They are keyed
 """
 
 import json
+import logging
 import os
 import re
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 DEV_SUFFIX = "_dev"
 _IDENT = re.compile(r"^[a-z_][a-z0-9_]*$")
@@ -74,8 +77,19 @@ def get_user_token(user_id: str, service_id: str, *, secrets_client=None) -> str
 
 
 def get_dev_token(service_name: str, *, secrets_client=None) -> str | None:
-    """Return the `_dev` token for `service_name`, or None if none is stored."""
+    """Return the `_dev` token for `service_name`, or None if none is stored.
+
+    Local: env var `<SERVICE>_DEV_TOKEN`, then `$GENERATED_DIR/creds/<service>_dev.json`.
+    MODE=aws: Secrets Manager secret `<service>_dev`, then the env var. The fallback keeps
+    verification working when the secret or its IAM permission is not set up yet (a Secrets
+    Manager error is logged and never blocks publishing).
+    """
     key = dev_key(service_name)
-    if os.environ.get("MODE", "local") == "aws":
-        return _from_secrets_manager(key, secrets_client)
-    return _from_env(key) or _from_file(key)
+    if os.environ.get("MODE", "local") != "aws":
+        return _from_env(key) or _from_file(key)
+    try:
+        token = _from_secrets_manager(key, secrets_client)
+    except Exception as e:  # noqa: BLE001 - no region / no IAM / network: fall back to the env var
+        log.warning("dev token for %s not read from Secrets Manager: %s", service_name, type(e).__name__)
+        token = None
+    return token or _from_env(key)

@@ -1,7 +1,7 @@
 import json
 
 import httpx
-from runtime.auth_context import get_current_token
+from runtime.auth_context import get_current_base_url, get_current_token
 
 
 async def place_order_request(token: str, url: str, end_point: str, method: str, params: dict, body: dict, headers: dict):
@@ -64,7 +64,7 @@ async def place_orderfordemo_bistro(item: str, quantity: int | None = None) -> s
 
     result = await place_order_request(
         token,
-        "http://localhost:9000",
+        get_current_base_url(),  # set by the caller from the registry, never baked into the code
         "/orders".format(**path_params),
         "POST",
         query,

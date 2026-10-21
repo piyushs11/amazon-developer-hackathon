@@ -3,7 +3,8 @@ Rendered into endpoints/<tool_name>.py; the service main file imports the tool f
 
 Placeholders:
     service_name   identifier-safe service name, e.g. "demo_bistro"
-    base_url       service base URL (not part of path_template)
+    base_url       unused: the service base URL is NOT baked into the code; the tool reads it
+                   at call time with get_current_base_url() (set by the gateway from the registry)
     endpoint_id    e.g. "get_order_status"; names the HTTP helper
     tool_name      e.g. "get_order_status"; MCP tool is {tool_name}for{service_name}
     method         HTTP method: GET, POST, PUT, PATCH, DELETE
@@ -18,7 +19,7 @@ Placeholders:
 ENDPOINT_TEMPLATE = '''import json
 
 import httpx
-from runtime.auth_context import get_current_token
+from runtime.auth_context import get_current_base_url, get_current_token
 
 
 async def {{ endpoint_id }}_request(token: str, url: str, end_point: str, method: str, params: dict, body: dict, headers: dict):
@@ -96,7 +97,7 @@ async def {{ tool_name }}for{{ service_name }}(
 
     result = await {{ endpoint_id }}_request(
         token,
-        "{{ base_url }}",
+        get_current_base_url(),  # set by the caller from the registry, never baked into the code
         "{{ path_template }}".format(**path_params),
         "{{ method }}",
         query,

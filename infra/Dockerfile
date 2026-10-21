@@ -5,6 +5,12 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 
+# jq: backend/app/codegen/create_folders.sh needs it to generate tool bundles when a service is
+# published (without it, publish fails at the "codegen" step with "jq is required").
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends jq \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY pyproject.toml ./
 COPY backend ./backend
 COPY contracts ./contracts

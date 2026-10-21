@@ -1,7 +1,7 @@
 import json
 
 import httpx
-from runtime.auth_context import get_current_token
+from runtime.auth_context import get_current_base_url, get_current_token
 
 
 async def search_menu_request(token: str, url: str, end_point: str, method: str, params: dict, body: dict, headers: dict):
@@ -62,7 +62,7 @@ async def search_menufordemo_bistro(query: str) -> str:
 
     result = await search_menu_request(
         token,
-        "http://localhost:9000",
+        get_current_base_url(),  # set by the caller from the registry, never baked into the code
         "/menu/search".format(**path_params),
         "GET",
         query,

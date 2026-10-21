@@ -42,6 +42,27 @@ def _short(e: Exception) -> str:
     return text[:MAX_MESSAGE]
 
 
+def resolve_base_url(mapped: dict) -> str | None:
+    """Where verification sends the tools' API calls (the tools do not contain the URL).
+
+    The mapped JSON's own `base_url` if it has one, else the service's URL from the registry /
+    service directory, then UPSTREAM_REWRITES (e.g. localhost:9000 -> demo-api:9000 in Docker).
+    Returns None if the service has no known URL; the tool then fails with a clear error.
+    """
+    from backend.app.auth.settings import get_settings, rewrite
+
+    url = mapped.get("base_url")
+    if not url:
+        try:
+            from backend.app.auth.factory import get_service_directory
+
+            info = get_service_directory().get(mapped["service_uuid"])
+        except Exception:  # noqa: BLE001 - registry trouble must not crash onboarding
+            info = None
+        url = info.base_url if info else None
+    return rewrite(url, get_settings().upstream_rewrites) if url else None
+
+
 def generate(mapped: dict, out_dir: str) -> None:
     """Render the service folder with create_folders.sh, feeding it the mapped JSON on stdin."""
     subprocess.run(
@@ -118,6 +139,7 @@ async def onboard(
         service_name = service_slug(mapped["service_name"])
         generate(mapped, out_dir)
         tool_names = seed_cache(service_name, mapped, out_dir, cache)
+        verify_kwargs.setdefault("base_url", resolve_base_url(mapped))
         results = await verify_service(
             service_name, tool_names, cache=cache, service_uuid=service_uuid, version=version_new,
             **verify_kwargs

@@ -4,9 +4,10 @@ Handles: initialize, notifications/*, ping, tools/list, tools/call.
 
 A tools/call runs one tool of the published bundle for the calling user:
     token  <- TokenProvider.get_valid_token(user_id, service_uuid)   (refreshed if needed)
-    result <- runtime.auth_context.call_with_token(tool_fn, token, args)  (Dev 2)
-The tool reads the token with get_current_token() just before its API call; it never sees
-user_id and the LLM never supplies the token.
+    result <- runtime.auth_context.call_with_token(tool_fn, token, args, base_url=...)  (Dev 2)
+The tool reads the token with get_current_token() and the service URL with
+get_current_base_url() just before its API call; it never sees user_id and the LLM never
+supplies the token. The base URL comes from the registry (UPSTREAM_REWRITES already applied).
 """
 import asyncio
 import json
@@ -45,11 +46,13 @@ class RpcError(Exception):
 class Request:
     """Everything a method needs; built fresh for every HTTP request."""
 
-    def __init__(self, user_id: str, service_uuid: str, service_name: str, bundle: LoadedBundle):
+    def __init__(self, user_id: str, service_uuid: str, service_name: str, bundle: LoadedBundle,
+                 base_url: str | None = None):
         self.user_id = user_id
         self.service_uuid = service_uuid
         self.service_name = service_name  # display name, e.g. "Demo Bistro"
         self.bundle = bundle
+        self.base_url = base_url  # where the tools send their API calls (registry + rewrites)
         self.request_id = uuid.uuid4().hex[:16]
 
 
@@ -146,7 +149,9 @@ async def _run_tool(req: Request, tool: Tool, args: dict) -> dict:
         )
 
     try:
-        out = await call_with_token(tool.fn, token, args, CALL_TIMEOUT_SECONDS)
+        out = await call_with_token(
+            tool.fn, token, args, CALL_TIMEOUT_SECONDS, base_url=req.base_url
+        )
     except TimeoutError:
         return _result(f"{req.service_name} took too long to answer.", is_error=True)
     except Exception as exc:  # noqa: BLE001 — never leak stack traces (or the token) to the caller

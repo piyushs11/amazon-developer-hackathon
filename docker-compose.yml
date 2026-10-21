@@ -7,13 +7,28 @@ services:
       POSTGRES_PASSWORD: mcpbridge
       POSTGRES_DB: mcpbridge
     ports: ["5432:5432"]
+    healthcheck:  # lets `depends_on: condition: service_healthy` and `up --wait` wait for it
+      test: ["CMD-SHELL", "pg_isready -U mcpbridge -d mcpbridge"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
   # ---- Dev 2 ----
+  # Tool cache for generation/verification (scratch space; bundles in storage are the durable copy).
   redis:
     image: redis:7
-    ports: ["6379:6379"]
+    ports: ["6379:6379"]  # host access for `make dev` (uvicorn on the host) and the tests
+    restart: unless-stopped
 
-  # catalog:            # Dev 1 — mock-services/catalog on :9200
+  catalog:              # mock service catalog: serves the spec JSON that the seed step loads
+    build: ./mock-services
+    environment: { APP: catalog, PORT: "9200" }
+    ports: ["9200:9200"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9200/services')"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
   # ---- Dev 3 ----
   demo-api:             # fake Demo Bistro API
@@ -34,11 +49,42 @@ services:
     env_file: [{ path: .env, required: false }]
     environment:
       DATABASE_URL: postgresql://mcpbridge:mcpbridge@postgres:5432/mcpbridge
-      # Bundles and the spec say localhost:9000/9100; inside Docker the mocks have service names.
+      # `localhost` inside this container is the app itself, so point at the redis service.
+      REDIS_URL: redis://redis:6379/0
+      # Real persistence in Docker/AWS (these override .env; `make dev` keeps the memory/fake defaults).
+      #   REGISTRY=postgres       -> services come from the seeded registry; nothing is live until publish runs
+      #   TOKEN_PROVIDER=secrets  -> per-user OAuth tokens in AWS Secrets Manager
+      #                              (mcp-bridge/<service_uuid>/<user_id>); when AWS cannot be reached
+      #                              (no credentials, no network, no permission) they go to Postgres,
+      #                              encrypted with TOKEN_ENC_KEY. Use `local` to skip AWS entirely.
+      REGISTRY: postgres
+      TOKEN_PROVIDER: secrets
+      # boto3 (Bedrock, S3, Secrets Manager, SES) needs a region; Bedrock's default model is a
+      # `us.` profile, so keep this a US region. Credentials come from the EC2 instance role.
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
+      # The registry/spec say localhost:9000/9100; inside Docker the mocks have service names.
+      # The gateway applies this to the tools' API calls (base URL is read at call time, not
+      # baked into bundles), to verification, and to the OAuth token calls.
       UPSTREAM_REWRITES: http://localhost:9000=http://demo-api:9000,http://localhost:9100=http://oauth:9100
     ports: ["8000:8000"]
-    depends_on: [postgres, demo-api, oauth]
+    depends_on: [postgres, redis, demo-api, oauth]
     restart: unless-stopped
+
+  # One-shot: parse + map every service in the catalog into the registry (Postgres), so publish()
+  # has something to map. Safe to re-run: it only updates spec fields and never touches the
+  # active bundle. Runs on every `up` (so on every deploy). Local equivalent: `make seed`.
+  seed:
+    profiles: ["app", "ec2"]
+    build: { context: ., dockerfile: infra/Dockerfile }
+    command: ["python", "-m", "backend.app.db.registry.seed"]
+    environment:
+      DATABASE_URL: postgresql://mcpbridge:mcpbridge@postgres:5432/mcpbridge
+      CATALOG_URL: http://catalog:9200
+    depends_on:
+      postgres: { condition: service_healthy }
+      catalog: { condition: service_healthy }
+    restart: "no"
 
   caddy:                # HTTPS on EC2 (needs DOMAIN in .env and DNS pointing here)
     profiles: ["ec2"]

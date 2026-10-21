@@ -17,7 +17,12 @@ from pathlib import Path
 from typing import Protocol
 
 _UUID = re.compile(r"^[A-Za-z0-9-]{1,64}$")
-_VERSION = re.compile(r"^([0-9a-f]{12}|[0-9]{1,9})$")  # content hash, or numeric (versioning_updation)
+_VERSION_PATTERN = r"[0-9a-f]{12}|[0-9]{1,9}"  # content hash, or numeric (versioning_updation)
+_VERSION = re.compile(rf"^({_VERSION_PATTERN})$")
+# s3://{bucket}/bundles/{service_uuid}/{version}/ ; group 1 = bucket, group 2 = key prefix
+_S3_BUNDLE_PATH = re.compile(
+    rf"^s3://([^/]+)/(bundles/[A-Za-z0-9-]{{1,64}}/(?:{_VERSION_PATTERN})/)$"
+)
 _FILE = re.compile(r"^[a-z_][a-z0-9_]*\.py$")
 
 
@@ -174,7 +179,7 @@ class S3Storage:
         return f"s3://{self.bucket}/{prefix}"
 
     def read_bundle(self, path: str) -> dict[str, str]:
-        match = re.match(r"^s3://([^/]+)/(bundles/[A-Za-z0-9-]{1,64}/[0-9a-f]{12}/)$", path)
+        match = _S3_BUNDLE_PATH.match(path)
         if not match or match.group(1) != self.bucket:
             raise ValueError(f"not a bundle path in bucket {self.bucket!r}: {path!r}")
         prefix = match.group(2)

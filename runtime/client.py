@@ -34,6 +34,7 @@ class CallContext(BaseModel):
     user_id: str
     service_uuid: str
     request_id: str = ""
+    base_url: str | None = None  # where the tool sends its API call (from the registry)
 
 
 # Immutable bundle versions never change, so a loaded tool function is cached for good.
@@ -96,7 +97,7 @@ async def call_api(
             "call_api request=%s service=%s version=%s tool=%s args=%s",
             ctx.request_id, ctx.service_uuid, version, tool_name, sorted(clean_args),
         )
-        result = await call_with_token(fn, token, clean_args, timeout)
+        result = await call_with_token(fn, token, clean_args, timeout, base_url=ctx.base_url)
         return result if isinstance(result, str) else json.dumps(result, default=str)
     except NotImplementedError as e:
         return _failure(str(e), 501)

@@ -109,6 +109,20 @@ def test_s3_rejects_foreign_paths():
         storage.read_bundle("s3://other-bucket/bundles/x/abcdef012345/")
 
 
+def test_s3_read_bundle_accepts_numeric_version():
+    storage = S3Storage("my-bucket", client=FakeS3())
+    path = storage.write_bundle(UUID, "1", FILES)
+    assert path == f"s3://my-bucket/bundles/{UUID}/1/"
+    assert storage.read_bundle(path) == FILES
+
+
+def test_s3_read_bundle_rejects_bad_version():
+    storage = S3Storage("my-bucket", client=FakeS3())
+    for bad in ("latest", "ABCDEF012345", "1234567890"):  # not hex-12, not 1-9 digits
+        with pytest.raises(ValueError):
+            storage.read_bundle(f"s3://my-bucket/bundles/{UUID}/{bad}/")
+
+
 def test_get_storage_picks_by_mode(monkeypatch, tmp_path):
     monkeypatch.setenv("GENERATED_DIR", str(tmp_path))
     monkeypatch.delenv("MODE", raising=False)

@@ -10,10 +10,11 @@ Platform user tokens (C8), upstream OAuth A1–A5, token vault, refresh.
 | `router.py` | `POST /auth/demo-login {username}` → `{user_id, user_token}` |
 | `oauth.py` | `build_auth_url(user_id, service_uuid)`, `handle_callback(code, state)`, `callback_redirect()`, `refresh()` |
 | `state.py` | HMAC-signed `state` (10 min) |
-| `vault.py` | `InMemoryTokenStore`, `LocalTokenStore` (Postgres, Fernet-encrypted) |
+| `vault.py` | `InMemoryTokenStore`, `LocalTokenStore` (Postgres, Fernet-encrypted), `SecretsManagerTokenStore` (one AWS secret per user+service), `FallbackTokenStore` (Secrets Manager first, Postgres when AWS is unreachable; `TOKEN_PROVIDER=secrets`) |
 | `factory.py` | `get_identity/get_token_store/get_mapping/get_token_provider`, `configure()` at startup |
 
 ## For Dev 4
+(The routes below are already built in `backend/app/api/router.py`; this is how they use the auth code.)
 ```python
 from backend.app.auth.identity import get_current_user          # Depends() on /api routes
 from backend.app.auth.oauth import build_auth_url, handle_callback, callback_redirect

@@ -42,6 +42,17 @@ CREATE TABLE IF NOT EXISTS endpoint_registry (
     input_schema  JSONB        NOT NULL,
     PRIMARY KEY (service_uuid, endpoint_id)
 );
+
+-- Who owns a service. The failure e-mail for a tool that could not be onboarded goes to `email`
+-- (verifier/utilities.get_business_email reads it by service_uuid).
+CREATE TABLE IF NOT EXISTS businesses (
+    service_uuid  VARCHAR(64)  PRIMARY KEY
+                  REFERENCES service_registry (service_uuid) ON DELETE CASCADE,
+    business_name VARCHAR(255) NOT NULL,
+    service_names TEXT[]       NOT NULL DEFAULT '{}',
+    email         VARCHAR(320),                   -- NULL until the business gives one
+    created_at    TIMESTAMP    NOT NULL DEFAULT now()
+);
 """
 
 
@@ -56,6 +67,14 @@ class ServiceRow(BaseModel):
     bundle_path: str | None = None
     spec_hash: str | None = None
     published_at: datetime | None = None
+
+
+class BusinessRow(BaseModel):
+    service_uuid: str
+    business_name: str
+    service_names: list[str] = []
+    email: str | None = None
+    created_at: datetime | None = None
 
 
 class ActiveBundle(BaseModel):
@@ -127,6 +146,66 @@ def upsert_endpoints(service_uuid: str, mapped: MappedService) -> None:
                     Jsonb(endpoint.input_schema),
                 ),
             )
+
+
+def ensure_business(
+    service_uuid: str,
+    *,
+    business_name: str | None = None,
+    service_names: list[str] | None = None,
+    email: str | None = None,
+) -> bool:
+    """Create the business row for a service if it has none. Returns True if a row was created.
+
+    An existing row is never touched (so a stored email is never overwritten). Missing values
+    come from the service: the name defaults to its service_name. The service must already be in
+    the registry; otherwise nothing is created and False is returned.
+    """
+    with _connect() as conn:
+        created = conn.execute(
+            """
+            INSERT INTO businesses (service_uuid, business_name, service_names, email)
+            SELECT s.service_uuid,
+                   COALESCE(%s::varchar, s.service_name),
+                   COALESCE(%s::text[], ARRAY[s.service_name]),
+                   %s::varchar
+            FROM service_registry s
+            WHERE s.service_uuid = %s
+            ON CONFLICT (service_uuid) DO NOTHING
+            """,
+            (business_name, service_names, email, service_uuid),
+        ).rowcount
+    return created > 0
+
+
+def upsert_business(
+    service_uuid: str, business_name: str, service_names: list[str], email: str | None
+) -> None:
+    """Create or replace a business row (the onboarding route uses this). Raises LookupError
+    if the service is not in the registry."""
+    with _connect() as conn:
+        written = conn.execute(
+            """
+            INSERT INTO businesses (service_uuid, business_name, service_names, email)
+            SELECT s.service_uuid, %s::varchar, %s::text[], %s::varchar
+            FROM service_registry s WHERE s.service_uuid = %s
+            ON CONFLICT (service_uuid) DO UPDATE SET
+                business_name = EXCLUDED.business_name,
+                service_names = EXCLUDED.service_names,
+                email = EXCLUDED.email
+            """,
+            (business_name, service_names, email, service_uuid),
+        ).rowcount
+    if written == 0:
+        raise LookupError(f"service '{service_uuid}' is not in the registry")
+
+
+def get_business(service_uuid: str) -> BusinessRow | None:
+    with _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM businesses WHERE service_uuid = %s", (service_uuid,)
+        ).fetchone()
+    return BusinessRow.model_validate(row) if row else None
 
 
 def get_service(service_uuid: str) -> ServiceRow | None:

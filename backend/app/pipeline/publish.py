@@ -1,7 +1,8 @@
 """publish(user_id, service_uuid, on_progress): make a service's tools live (contract C6).
 
     first publish of a service:
-        "generating"  -> generate_service(uuid)        writes bundles/{uuid}/{version}/ (1, 2, 3...)
+        "generating"  -> prepare_mapped(uuid)          registry -> mapped/mapped.{uuid}.json (map step)
+                         generate_service(uuid)        writes bundles/{uuid}/{version}/ (1, 2, 3...)
         "deploying"   -> Deployer.deploy(...)          bundle must load, then becomes active
         "registering" -> Registrar.register(...)       Alexa+ (mocked)
     already published by another user:
@@ -43,9 +44,13 @@ def version_from_path(bundle_path: str) -> str:
 async def publish(
     user_id: str, service_uuid: str, on_progress: Callable[[str], object] | None = None, *,
     generate=None, deployer=None, registrar=None, registry=None, mapping=None,
-    allow_partial: bool = False,
+    allow_partial: bool = False, prepare=None,
 ) -> PublishResult:
     """Publish `service_uuid` for `user_id`. The keyword arguments replace the defaults in tests.
+
+    prepare(service_uuid) is the map step. With the real generate_service it defaults to
+    prepare_mapped; if a test injects `generate` it is skipped unless `prepare` is given too
+    (a fake generator reads no mapped JSON).
 
     allow_partial=False: a bundle where some tools failed verification is not published.
     """
@@ -90,8 +95,23 @@ async def publish(
             await progress("done")
             return PublishResult(status="done", mcp_url=url, skipped=True, version=active.version)
 
-        # 1. generate (Dev 2): files written to storage as the next version
         await progress("generating")
+
+        # 1. map (Dev 1 data -> Dev 2 input): registry -> mapped JSON in storage for generate_service
+        if prepare is None and generate is None:
+            from backend.app.pipeline.prepare_mapped import prepare_mapped as prepare
+        if prepare is not None:
+            try:
+                out = await asyncio.to_thread(prepare, service_uuid)
+                if inspect.isawaitable(out):
+                    await out
+            except Exception as exc:  # noqa: BLE001 — PrepareError carries its own step and code
+                as_step_error = getattr(exc, "as_step_error", None)
+                err = as_step_error() if as_step_error else StepError(
+                    step="map", code=type(exc).__name__, message=str(exc)[:MAX_MESSAGE])
+                return await fail(err.step, err.code, err.message)
+
+        # 2. generate (Dev 2): files written to storage as the next version
         if generate is None:
             from backend.app.pipeline.generate_service import generate_service as generate
         try:
@@ -107,7 +127,7 @@ async def publish(
             return await fail("store", "NO_BUNDLE", "generation returned no bundle")
         version = version_from_path(gen.bundle_path)
 
-        # 2. deploy (Dev 3): the bundle must load, then it becomes the active version
+        # 3. deploy (Dev 3): the bundle must load, then it becomes the active version
         await progress("deploying")
         deployer = deployer or get_deployer()
         try:
@@ -119,7 +139,7 @@ async def publish(
             return await fail("deploy", "BUNDLE_LOAD_FAILED",
                               deployed.error or "the bundle did not load in the gateway")
 
-        # 3. register (Dev 3): mocked Alexa+ registration
+        # 4. register (Dev 3): mocked Alexa+ registration
         await progress("registering")
         registrar = registrar or get_registrar()
         name = await asyncio.to_thread(_service_name, service_uuid)

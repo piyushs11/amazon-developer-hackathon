@@ -125,8 +125,13 @@ def tool_details(service_name: str, tool_name: str, *, cache: ToolCache) -> Tool
     return details
 
 
-async def call_tool_via_llm(details: ToolDetails, token: str, *, client=None, model_id=None) -> dict:
-    """Let the LLM call the tool. Returns {"input", "output", "error"} (JSON-serialisable)."""
+async def call_tool_via_llm(
+    details: ToolDetails, token: str, *, client=None, model_id=None, base_url: str | None = None,
+) -> dict:
+    """Let the LLM call the tool. Returns {"input", "output", "error"} (JSON-serialisable).
+
+    `base_url` is the service URL the tool reads with get_current_base_url() (not baked in).
+    """
     record = {"input": None, "output": None, "error": None}
     spec = details.spec
     try:
@@ -151,7 +156,7 @@ async def call_tool_via_llm(details: ToolDetails, token: str, *, client=None, mo
     record["input"] = args
 
     try:
-        result = await call_with_token(details.fn, token, args, CALL_TIMEOUT)
+        result = await call_with_token(details.fn, token, args, CALL_TIMEOUT, base_url=base_url)
     except TimeoutError:
         record["error"] = f"the endpoint did not respond within {CALL_TIMEOUT}s"
         return record
@@ -194,7 +199,7 @@ def build_failure_report(tool_name: str, record: dict, token: str | None = None)
 async def hit_endpoint(
     service_name: str, tool_name: str, *, token: str | None = None,
     cache: ToolCache | None = None, client=None, model_id=None, service_uuid: str | None = None,
-    version: str | None = None, error_storage=None,
+    version: str | None = None, error_storage=None, base_url: str | None = None,
 ):
     """Return "verified", or {"status": "failed", "detail": <last failure report>}."""
     token = token or get_dev_token(service_name)
@@ -212,7 +217,9 @@ async def hit_endpoint(
         except Exception as e:  # noqa: BLE001 - a broken tool is a failure to debug
             record = {"input": None, "output": None, "error": f"could not load tool: {type(e).__name__}: {_trim(e)}"}
         else:
-            record = await call_tool_via_llm(details, token, client=client, model_id=model_id)
+            record = await call_tool_via_llm(
+                details, token, client=client, model_id=model_id, base_url=base_url
+            )
         if parse_response(record) == RESPONSE_GENERATED:
             return VERIFIED  # stored in mcptool storage by persist_verified under the same version
         report = build_failure_report(tool_name, record, token)

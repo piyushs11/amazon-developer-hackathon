@@ -10,7 +10,13 @@ from backend.app.codegen.templates.service_template import ENDPOINT_TEMPLATE
 from backend.app.codegen.verifier import hit_endpoint as he
 from backend.app.codegen.verifier.utilities import run_tool_call
 from backend.app.storage.read_cred_tokens import get_user_token
-from runtime.auth_context import call_with_token, get_current_token, use_token
+from runtime.auth_context import (
+    call_with_token,
+    get_current_base_url,
+    get_current_token,
+    use_base_url,
+    use_token,
+)
 
 TOOL_SRC = '''import json
 from runtime.auth_context import get_current_token
@@ -219,5 +225,34 @@ def test_rendered_tool_takes_only_its_real_params(endpoint):
     assert names == sorted((p["name"] for p in endpoint["params"]),
                            key=lambda n: not next(p for p in endpoint["params"] if p["name"] == n)["required"])
     assert "token" in [a.arg for a in funcs[f"{endpoint['endpoint_id']}_request"].args.args]
-    assert "from runtime.auth_context import get_current_token" in source
+    assert "from runtime.auth_context import get_current_base_url, get_current_token" in source
     assert "token = get_current_token()" in source
+    # the service URL is read at call time, never baked into the generated code
+    assert "get_current_base_url()," in source
+    assert "http://x" not in source
+
+
+# ---- base URL slot (runtime approach: the URL is never baked into a tool) ----
+
+
+def test_base_url_slot_is_scoped_and_trimmed():
+    with pytest.raises(RuntimeError):
+        get_current_base_url()
+    with use_base_url("http://demo-api:9000/"):
+        assert get_current_base_url() == "http://demo-api:9000"
+    with pytest.raises(RuntimeError):
+        get_current_base_url()
+
+
+async def test_call_with_token_sets_base_url_per_call():
+    async def tool(delay: float):
+        await asyncio.sleep(delay)
+        return get_current_base_url()
+
+    a, b = await asyncio.gather(
+        call_with_token(tool, "t", {"delay": 0.02}, 1, base_url="http://a.test"),
+        call_with_token(tool, "t", {"delay": 0.01}, 1, base_url="http://b.test"),
+    )
+    assert (a, b) == ("http://a.test", "http://b.test")
+    with pytest.raises(RuntimeError):  # no base_url given -> the tool cannot guess one
+        await call_with_token(tool, "t", {"delay": 0}, 1)

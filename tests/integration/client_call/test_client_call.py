@@ -74,7 +74,8 @@ def run_integration(case: str) -> bool:
 
             # the function under test, called the way the gateway calls it
             response = asyncio.run(call_api(
-                CallContext(**call["ctx"]), call["tool_name"], call["args"],
+                CallContext(**call["ctx"], base_url=api.url),  # the gateway adds the registry URL
+                call["tool_name"], call["args"],
                 storage=storage, tool_loader=_load_tool,
             ))
 

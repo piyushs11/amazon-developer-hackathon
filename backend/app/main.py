@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app import gateway
+from backend.app.api.router import router as api_router
 from backend.app.auth import factory as auth_factory
 from backend.app.auth.router import router as auth_router
 from backend.app.auth.settings import get_settings
@@ -26,6 +27,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router)  # Dev 3: POST /auth/demo-login
+app.include_router(api_router)  # C7: /oauth/start, /oauth/callback, /publish, /me/services
 app.include_router(gateway.router)  # Dev 3: POST /mcp/{service_uuid}
 
 

@@ -326,6 +326,8 @@ def verify_changes(
             return _not_verified(f"function {name!r} must not take a 'token' parameter")
     if "get_current_token()" in old and "get_current_token()" not in rebuilt:
         return _not_verified("the tool must still read its token with get_current_token()")
+    if "get_current_base_url()" in old and "get_current_base_url()" not in rebuilt:
+        return _not_verified("the tool must still read the service URL with get_current_base_url()")
 
     cache.set_source(service_name, tool_name, rebuilt)
     return {"status": "verified", "source": rebuilt, "reason": reason, "corrected": corrected}
@@ -337,7 +339,7 @@ def _no_token_message(service_name: str) -> str:
 
 async def run_tool_call(
     service_name: str, tool_name: str, user_id: str, llm_args: dict, *,
-    cache: ToolCache | None = None, token_fetcher=None,
+    cache: ToolCache | None = None, token_fetcher=None, base_url: str | None = None,
 ) -> str:
     """Run a tool the LLM picked, attaching THIS user's token just before the API call.
 
@@ -358,7 +360,7 @@ async def run_tool_call(
         return _no_token_message(service_name)
     try:
         details = tool_details(service_name, tool_name, cache=cache or ToolCache.from_env())
-        return await call_with_token(details.fn, token, args, CALL_TIMEOUT)
+        return await call_with_token(details.fn, token, args, CALL_TIMEOUT, base_url=base_url)
     except TimeoutError:
         message = f"the {tool_name} request timed out"
     except Exception as e:  # noqa: BLE001 - never leak a stack trace or the token to the caller
@@ -369,7 +371,7 @@ async def run_tool_call(
 async def verify_service(
     service_name: str, tool_names: list[str], *, token: str | None = None,
     cache: ToolCache | None = None, client=None, model_id=None, service_uuid: str | None = None,
-    version: str | None = None,
+    version: str | None = None, base_url: str | None = None,
 ) -> dict:
     """Return {tool_name: {"status": "pass" | "fail", "detail": str}} for every tool."""
     from .hit_endpoint import VERIFIED, hit_endpoint
@@ -378,7 +380,7 @@ async def verify_service(
     for tool_name in tool_names:
         out = await hit_endpoint(
             service_name, tool_name, token=token, cache=cache, client=client, model_id=model_id,
-            service_uuid=service_uuid, version=version,
+            service_uuid=service_uuid, version=version, base_url=base_url,
         )
         results[tool_name] = (
             {"status": "pass", "detail": VERIFIED} if out == VERIFIED

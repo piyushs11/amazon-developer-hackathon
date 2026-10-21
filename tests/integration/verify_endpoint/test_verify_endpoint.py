@@ -61,7 +61,7 @@ def run_integration(case: str) -> bool:
             # the function under test, called the way the pipeline calls it (token from the env)
             outcome = asyncio.run(hit_endpoint(
                 setup["service_name"], setup["tool_name"], cache=cache, client=llm,
-                service_uuid=setup["service_uuid"],
+                service_uuid=setup["service_uuid"], base_url=api.url,  # tools read the URL at call time
             ))
             emails = outbox_emails(tmp)
 

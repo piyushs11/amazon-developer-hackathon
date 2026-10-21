@@ -76,6 +76,48 @@ def test_file_lookup_and_missing(monkeypatch, tmp_path):
     assert get_dev_token("demo_bistro") == "from-file"
 
 
+class _FakeSecrets:
+    class exceptions:  # mimics the boto3 client attribute
+        class ResourceNotFoundException(Exception):
+            pass
+
+    def __init__(self, value=None, error=None):
+        self._value, self._error = value, error
+
+    def get_secret_value(self, SecretId):
+        if self._error:
+            raise self._error
+        if self._value is None:
+            raise self.exceptions.ResourceNotFoundException()
+        return {"SecretString": self._value}
+
+
+def test_aws_dev_token_prefers_secrets_manager(monkeypatch):
+    monkeypatch.setenv("MODE", "aws")
+    monkeypatch.setenv("DEMO_BISTRO_DEV_TOKEN", "from-env")
+    secrets = _FakeSecrets(json.dumps({"token": "from-secret"}))
+    assert get_dev_token("demo_bistro", secrets_client=secrets) == "from-secret"
+
+
+def test_aws_dev_token_falls_back_to_env_when_secret_missing(monkeypatch):
+    monkeypatch.setenv("MODE", "aws")
+    monkeypatch.setenv("DEMO_BISTRO_DEV_TOKEN", "from-env")
+    assert get_dev_token("demo_bistro", secrets_client=_FakeSecrets()) == "from-env"
+
+
+def test_aws_dev_token_falls_back_to_env_when_secrets_manager_errors(monkeypatch):
+    monkeypatch.setenv("MODE", "aws")
+    monkeypatch.setenv("DEMO_BISTRO_DEV_TOKEN", "from-env")
+    broken = _FakeSecrets(error=RuntimeError("AccessDenied"))
+    assert get_dev_token("demo_bistro", secrets_client=broken) == "from-env"
+
+
+def test_aws_dev_token_none_when_nothing_configured(monkeypatch):
+    monkeypatch.setenv("MODE", "aws")
+    monkeypatch.delenv("DEMO_BISTRO_DEV_TOKEN", raising=False)
+    assert get_dev_token("demo_bistro", secrets_client=_FakeSecrets()) is None
+
+
 def test_invalid_service_name_rejected():
     with pytest.raises(ValueError):
         dev_key("../etc")

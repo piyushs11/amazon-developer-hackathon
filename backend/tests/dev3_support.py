@@ -1,8 +1,8 @@
 """Shared fixtures for Dev 3 tests (auth + gateway). Everything runs in-process:
 the mock demo-api and fake OAuth apps are reached through httpx.ASGITransport.
 
-The bundle is Dev 2's generated Demo Bistro bundle. Its tools call
-http://localhost:9000 with httpx; `route_upstream` sends that traffic to the demo-api
+The bundle is Dev 2's generated Demo Bistro bundle. Its tools call the base URL the gateway
+gives them (the registry's http://localhost:9000) with httpx; `route_upstream` sends that traffic to the demo-api
 app in-process and records each request (method, url, bearer token).
 """
 import importlib.util

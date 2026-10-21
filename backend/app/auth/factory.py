@@ -5,6 +5,9 @@ backend/app/core/wiring.py (Dev 4) re-exports these; configure() runs once at st
 TOKEN_PROVIDER=fake   -> every upstream call uses "demo-token"; tokens/mapping in memory
 TOKEN_PROVIDER=memory -> real OAuth tokens + refresh, kept in memory (no Postgres needed)
 TOKEN_PROVIDER=local  -> real OAuth tokens + refresh, encrypted in Postgres; mapping in Postgres
+TOKEN_PROVIDER=secrets -> real OAuth tokens + refresh in AWS Secrets Manager
+                          (mcp-bridge/{service_uuid}/{user_id}); if AWS cannot be reached the
+                          encrypted Postgres store (same as `local`) is used instead; mapping in Postgres
 """
 from backend.app.auth.identity import DEMO_USER_ID, build_identity
 from backend.app.auth.services import (
@@ -13,7 +16,12 @@ from backend.app.auth.services import (
     RegistryServiceDirectory,
 )
 from backend.app.auth.settings import get_settings
-from backend.app.auth.vault import InMemoryTokenStore, LocalTokenStore
+from backend.app.auth.vault import (
+    FallbackTokenStore,
+    InMemoryTokenStore,
+    LocalTokenStore,
+    SecretsManagerTokenStore,
+)
 from backend.app.db.mapping import InMemoryMappingStore, PostgresMappingStore
 from runtime import tokens as runtime_tokens
 
@@ -41,6 +49,11 @@ def get_token_store():
         s = get_settings()
         if s.token_provider == "local":
             return LocalTokenStore(s.token_enc_key)
+        if s.token_provider == "secrets":
+            # Postgres is only opened if AWS cannot be used (built on first fallback).
+            return FallbackTokenStore(
+                SecretsManagerTokenStore(), lambda: LocalTokenStore(s.token_enc_key)
+            )
         return InMemoryTokenStore()
 
     return _once("token_store", build)
@@ -48,7 +61,7 @@ def get_token_store():
 
 def get_mapping():
     def build():
-        if get_settings().token_provider == "local":
+        if get_settings().token_provider in ("local", "secrets"):
             return PostgresMappingStore()
         store = InMemoryMappingStore()
         if get_settings().token_provider == "fake":
@@ -75,7 +88,7 @@ def get_token_provider():
         kind = get_settings().token_provider
         if kind == "fake":
             return runtime_tokens.FakeTokenProvider()
-        if kind in ("memory", "local"):
+        if kind in ("memory", "local", "secrets"):
             return runtime_tokens.StoreTokenProvider(get_token_store(), refresh)
         raise RuntimeError(f"unknown TOKEN_PROVIDER={kind!r}")
 

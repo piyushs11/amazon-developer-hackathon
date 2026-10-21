@@ -14,7 +14,7 @@ class Settings:
     gateway_url: str
     api_url: str
     frontend_url: str
-    token_provider: str  # fake | memory | local
+    token_provider: str  # fake | memory | local | secrets
     registry: str  # memory | postgres
     identity: tuple[str, ...]  # any of: jwt, fixed
     platform_jwt_secret: str

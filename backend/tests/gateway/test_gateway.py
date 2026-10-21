@@ -100,6 +100,14 @@ async def test_tool_call_with_token(client):
     assert upstream.calls[-1]["token"] == "demo-token"
 
 
+async def test_tool_calls_use_the_registry_base_url_with_rewrites(client, dev3_env):
+    """The URL is not in the bundle: the gateway takes it from the registry (+ UPSTREAM_REWRITES)."""
+    dev3_env(UPSTREAM_REWRITES="http://localhost:9000=http://demo-api:9000")  # the Docker setup
+    result = await call(client, DEMO_USER_TOKEN, "get_order_status", order_id="A1042")
+    assert result["isError"] is False
+    assert upstream.calls[-1]["url"] == "http://demo-api:9000/orders/A1042"
+
+
 async def test_upstream_error_is_tool_error(client):
     result = await call(client, DEMO_USER_TOKEN, "get_order_status", order_id="NOPE")
     assert result["isError"] is True

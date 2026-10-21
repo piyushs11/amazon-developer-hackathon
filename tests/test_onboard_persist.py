@@ -162,3 +162,14 @@ def test_generate_runs_the_real_script_on_stdin(tmp_path):
     tool = (folder / "get_order_status.py").read_text()
     ast.parse(tool)
     assert "def get_order_statusfordemo_bistro(order_id: str)" in tool and "get_current_token()" in tool
+
+
+def test_resolve_base_url_prefers_mapped_then_service_directory_then_applies_rewrites(monkeypatch):
+    monkeypatch.delenv("UPSTREAM_REWRITES", raising=False)
+    demo = {"service_uuid": "11111111-1111-1111-1111-111111111111"}  # no base_url of its own
+    assert fo.resolve_base_url({**demo, "base_url": "http://x"}) == "http://x"
+    monkeypatch.setenv("REGISTRY", "memory")  # service directory = the Demo Bistro fixture spec
+    assert fo.resolve_base_url(demo) == "http://localhost:9000"
+    monkeypatch.setenv("UPSTREAM_REWRITES", "http://localhost:9000=http://demo-api:9000")
+    assert fo.resolve_base_url(demo) == "http://demo-api:9000"
+    assert fo.resolve_base_url({"service_uuid": "22222222-2222-2222-2222-222222222222"}) is None

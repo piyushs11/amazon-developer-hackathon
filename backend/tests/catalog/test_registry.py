@@ -105,3 +105,76 @@ def test_upsert_service_keeps_active_bundle(db, bistro):
 def test_set_active_version_unknown_service(db):
     with pytest.raises(LookupError):
         registry.set_active_version("no-such-uuid", "v1", "bundles/x/v1/", "hash1")
+
+
+# ---- businesses (owner of a service; the failure e-mail address lives here) ----
+
+def test_ensure_business_creates_a_placeholder_from_the_service(db, bistro):
+    registry.upsert_service(bistro)
+    assert registry.get_business(bistro.service_uuid) is None
+    assert registry.ensure_business(bistro.service_uuid) is True
+    row = registry.get_business(bistro.service_uuid)
+    assert (row.business_name, row.service_names, row.email) == ("Demo Bistro", ["Demo Bistro"], None)
+
+
+def test_ensure_business_never_overwrites_an_existing_row(db, bistro):
+    registry.upsert_service(bistro)
+    assert registry.ensure_business(
+        bistro.service_uuid, business_name="Demo Bistro Pvt Ltd", email="owner@demobistro.example"
+    )
+    assert registry.ensure_business(bistro.service_uuid, email="other@example.com") is False
+    assert registry.get_business(bistro.service_uuid).email == "owner@demobistro.example"
+
+
+def test_ensure_business_for_unknown_service_creates_nothing(db):
+    assert registry.ensure_business("no-such-uuid") is False
+    assert registry.get_business("no-such-uuid") is None
+
+
+def test_upsert_business_replaces_and_rejects_unknown_service(db, bistro):
+    registry.upsert_service(bistro)
+    registry.ensure_business(bistro.service_uuid, email="old@example.com")
+    registry.upsert_business(bistro.service_uuid, "New Name", ["A", "B"], "new@example.com")
+    row = registry.get_business(bistro.service_uuid)
+    assert (row.business_name, row.service_names, row.email) == ("New Name", ["A", "B"], "new@example.com")
+    with pytest.raises(LookupError):
+        registry.upsert_business("no-such-uuid", "X", [], None)
+
+
+def test_deleting_the_service_removes_its_business(db, bistro):
+    registry.upsert_service(bistro)
+    registry.ensure_business(bistro.service_uuid)
+    with psycopg.connect(os.environ["DATABASE_URL"], autocommit=True) as conn:
+        conn.execute("DELETE FROM service_registry WHERE service_uuid = %s", (bistro.service_uuid,))
+    assert registry.get_business(bistro.service_uuid) is None
+
+
+def test_failure_email_lookup_reads_the_real_table(db, bistro):
+    from backend.app.codegen.verifier.utilities import get_business_email
+
+    registry.upsert_service(bistro)
+    registry.ensure_business(bistro.service_uuid, email="owner@demobistro.example")
+    url = os.environ["DATABASE_URL"]
+    connect = lambda: psycopg.connect(url)
+    assert get_business_email(bistro.service_uuid, connect=connect) == "owner@demobistro.example"
+    assert get_business_email("22222222-2222-2222-2222-222222222222", connect=connect) is None
+
+
+def test_seed_businesses_adds_missing_rows_and_keeps_changed_emails(db, bistro, capsys):
+    from backend.app.db.registry import seed
+
+    registry.upsert_service(bistro)
+    seed.seed_businesses({bistro.service_uuid})
+    row = registry.get_business(bistro.service_uuid)
+    assert (row.business_name, row.email) == ("Demo Bistro Pvt Ltd", "owner@demobistro.example")
+
+    registry.upsert_business(bistro.service_uuid, "Demo Bistro Pvt Ltd", ["Demo Bistro"], "new@example.com")
+    seed.seed_businesses({bistro.service_uuid})  # a re-seed must not undo the change
+    assert registry.get_business(bistro.service_uuid).email == "new@example.com"
+
+
+def test_seed_businesses_skips_services_that_were_not_seeded(db, capsys):
+    from backend.app.db.registry import seed
+
+    seed.seed_businesses(set())
+    assert "skipped business" in capsys.readouterr().out
