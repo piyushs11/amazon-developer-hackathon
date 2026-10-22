@@ -11,7 +11,8 @@ Placeholders:
     description    endpoint description -> tool docstring
     path_template  e.g. "/orders/{order_id}"
     read_only      True / False (used by the main file for readOnlyHint)
-    params         list of {name, python_type, json_type, required, location, description}
+    params         list of {name, wire_name?, python_type, json_type, required, location, description}
+                   query/body/header keys use wire_name (the API's own name) when it is set
                    location is one of: path, query, body, header
     input_schema   {properties, required}; descriptions are already carried by params
 '''
@@ -78,17 +79,17 @@ async def {{ tool_name }}for{{ service_name }}(
     }
     query = {
 {%- for p in params if p.location == "query" %}
-        "{{ p.name }}": {{ p.name }},
+        "{{ p.wire_name or p.name }}": {{ p.name }},
 {%- endfor %}
     }
     body = {
 {%- for p in params if p.location == "body" %}
-        "{{ p.name }}": {{ p.name }},
+        "{{ p.wire_name or p.name }}": {{ p.name }},
 {%- endfor %}
     }
     headers = {
 {%- for p in params if p.location == "header" %}
-        "{{ p.name }}": {{ p.name }},
+        "{{ p.wire_name or p.name }}": {{ p.name }},
 {%- endfor %}
     }
     query = {k: v for k, v in query.items() if v is not None}

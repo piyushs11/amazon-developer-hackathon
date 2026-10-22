@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -19,7 +20,7 @@ def test_local_same_layout_as_bundles_and_overwrite(tmp_path):
     bundles, errors = LocalStorage(tmp_path / "bundles"), LocalErrorStorage(tmp_path / "errors")
     bundle = bundles.write_bundle(UUID, "2", {"get_thing.py": "ok\n"})
     path = errors.write_error(UUID, "2", "get_thing_failure.log", "boom")
-    assert path.split(UUID)[1] == bundle.split(UUID)[1] + "/get_thing_failure.log"
+    assert Path(path.split(UUID)[1]) == Path(bundle.split(UUID)[1]) / "get_thing_failure.log"
     errors.write_error(UUID, "2", "get_thing_failure.log", "boom again")
     assert errors.read_error(UUID, "2", "get_thing_failure.log") == "boom again"
     assert errors.list_errors(UUID, "2") == ["get_thing_failure.log"]

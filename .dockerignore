@@ -5,6 +5,6 @@ venv
 generated
 **/__pycache__
 **/node_modules
-frontend
+frontend/dist
 .env
 .env.*

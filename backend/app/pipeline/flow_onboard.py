@@ -9,11 +9,14 @@ bundles/{service_uuid}/{version}/.
 import ast
 import hashlib
 import json
+import logging
+import os
 import subprocess
 from pathlib import Path
 
 from jinja2 import Template
 
+from backend.app.codegen.sanitizer import SanitizeError, sanitize_mapped
 from backend.app.codegen.templates.services_consolidation_template import SERVICE_TEMPLATE
 from backend.app.codegen.verifier.utilities import service_slug, verify_service
 from backend.app.storage.add_n_read_mcp_tool import Storage, get_storage
@@ -22,6 +25,7 @@ from backend.app.versioning_updation.utilities import _next_version
 
 CREATE_FOLDERS = Path(__file__).resolve().parents[1] / "codegen" / "create_folders.sh"
 MAX_MESSAGE = 300
+log = logging.getLogger("mcp_bridge.onboard")
 
 
 class OnboardStepError(Exception):
@@ -61,6 +65,28 @@ def resolve_base_url(mapped: dict) -> str | None:
             info = None
         url = info.base_url if info else None
     return rewrite(url, get_settings().upstream_rewrites) if url else None
+
+
+def verification_mode() -> str:
+    """VERIFY=llm (default): each tool is called through Bedrock against the service's API.
+    VERIFY=skip: only check that each tool file loads (no AWS needed; for local runs)."""
+    mode = os.getenv("VERIFY", "llm").strip().lower()
+    return mode if mode in ("llm", "skip") else "llm"
+
+
+def skip_verification(service_name: str, tool_names: list[str], cache: ToolCache) -> dict:
+    """VERIFY=skip: a tool passes if its file compiles and exposes a token-free tool function."""
+    from runtime.loader import BundleLoadError, load_tool_source
+
+    log.warning("VERIFY=skip: %s tools are only load-checked, not called", service_name)
+    results = {}
+    for tool_name in tool_names:
+        try:
+            load_tool_source(cache.get_source(service_name, tool_name), tool_name)
+            results[tool_name] = {"status": "pass", "detail": "load-checked (VERIFY=skip)"}
+        except BundleLoadError as e:
+            results[tool_name] = {"status": "fail", "detail": str(e)[:MAX_MESSAGE]}
+    return results
 
 
 def generate(mapped: dict, out_dir: str) -> None:
@@ -131,6 +157,10 @@ async def onboard(
     Raises OnboardStepError(step="codegen" | "store", ...) if a step itself breaks (as opposed
     to individual tools failing verification, which is reported in the result).
     """
+    try:  # catalog text becomes Python source: refuse anything unsafe before rendering
+        mapped = sanitize_mapped(mapped)
+    except SanitizeError as e:
+        raise OnboardStepError("codegen", e.code, e.message[:MAX_MESSAGE]) from e
     cache = cache or ToolCache.from_env()
     storage = storage or get_storage()
     service_uuid = mapped["service_uuid"]
@@ -139,11 +169,14 @@ async def onboard(
         service_name = service_slug(mapped["service_name"])
         generate(mapped, out_dir)
         tool_names = seed_cache(service_name, mapped, out_dir, cache)
-        verify_kwargs.setdefault("base_url", resolve_base_url(mapped))
-        results = await verify_service(
-            service_name, tool_names, cache=cache, service_uuid=service_uuid, version=version_new,
-            **verify_kwargs
-        )
+        if verification_mode() == "skip":
+            results = skip_verification(service_name, tool_names, cache)
+        else:
+            verify_kwargs.setdefault("base_url", resolve_base_url(mapped))
+            results = await verify_service(
+                service_name, tool_names, cache=cache, service_uuid=service_uuid,
+                version=version_new, **verify_kwargs
+            )
     except Exception as e:
         raise OnboardStepError("codegen", type(e).__name__, _short(e)) from e
     try:

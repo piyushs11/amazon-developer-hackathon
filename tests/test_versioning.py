@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from backend.app.storage.add_n_read_mcp_tool import LocalStorage
@@ -77,7 +79,7 @@ def test_next_version_carries_over_replaces_and_drops(env):
     vb.replace(UUID, "a.py", "a2")
     vb.drop(UUID, "b.py")
     path = vb.create_version(UUID)
-    assert path.endswith("/2")
+    assert Path(path).name == "2"
     assert storage.read_bundle(path) == {"a.py": "a2", "c.py": "c", "d.py": "d"}
     assert storage.read_bundle(storage.bundle_path(UUID, "1")) == {"a.py": "a", "b.py": "b", "c.py": "c"}
     assert redis.d == {}

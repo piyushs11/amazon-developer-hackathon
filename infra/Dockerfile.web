@@ -1,0 +1,15 @@
+# Caddy with the built React app inside (EC2). Build from the repo root:
+#   docker build -f infra/Dockerfile.web .
+# VITE_API_URL is empty: the app calls the API on its own origin (see infra/Caddyfile).
+FROM node:20-alpine AS build
+WORKDIR /web
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend ./
+ARG VITE_API_URL=""
+ENV VITE_API_URL=$VITE_API_URL VITE_MOCK=0
+RUN npm run build
+
+FROM caddy:2
+COPY infra/Caddyfile /etc/caddy/Caddyfile
+COPY --from=build /web/dist /srv/www

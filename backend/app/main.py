@@ -22,12 +22,12 @@ app = FastAPI(title="MCP Bridge", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[get_settings().frontend_url],
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "MCP-Protocol-Version"],
 )
 
 app.include_router(auth_router)  # Dev 3: POST /auth/demo-login
-app.include_router(api_router)  # C7: /oauth/start, /oauth/callback, /publish, /me/services
+app.include_router(api_router)  # C7: /resolve-service, /services, /oauth/*, /publish, /me/services
 app.include_router(gateway.router)  # Dev 3: POST /mcp/{service_uuid}
 
 

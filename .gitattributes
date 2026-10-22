@@ -1,0 +1,5 @@
+# Shell scripts run inside Linux containers / on EC2: always LF, even on a Windows checkout
+# (core.autocrlf=true would otherwise give "set: pipefail\r: invalid option name").
+*.sh text eol=lf
+Caddyfile text eol=lf
+Dockerfile* text eol=lf

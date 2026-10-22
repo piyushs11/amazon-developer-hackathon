@@ -3,8 +3,6 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-
-
 # ---- C4: runtime (gateway -> bundle -> call_api) ----
 
 class CallContext(BaseModel):

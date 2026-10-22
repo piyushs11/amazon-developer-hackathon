@@ -7,6 +7,8 @@ services:
       POSTGRES_PASSWORD: mcpbridge
       POSTGRES_DB: mcpbridge
     ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]  # registry, connections, encrypted tokens survive rebuilds
+    restart: unless-stopped
     healthcheck:  # lets `depends_on: condition: service_healthy` and `up --wait` wait for it
       test: ["CMD-SHELL", "pg_isready -U mcpbridge -d mcpbridge"]
       interval: 3s
@@ -24,6 +26,7 @@ services:
     build: ./mock-services
     environment: { APP: catalog, PORT: "9200" }
     ports: ["9200:9200"]
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9200/services')"]
       interval: 3s
@@ -35,11 +38,13 @@ services:
     build: ./mock-services
     environment: { APP: demo-api, PORT: "9000" }
     ports: ["9000:9000"]
+    restart: unless-stopped
 
   oauth:                # fake OAuth provider
     build: ./mock-services
     environment: { APP: oauth, PORT: "9100" }
     ports: ["9100:9100"]
+    restart: unless-stopped
 
   # API + MCP gateway in Docker. Locally `make dev` runs uvicorn on the host instead,
   # so this only starts with a profile: `docker compose --profile app up` (or ec2).
@@ -56,9 +61,10 @@ services:
       #   TOKEN_PROVIDER=secrets  -> per-user OAuth tokens in AWS Secrets Manager
       #                              (mcp-bridge/<service_uuid>/<user_id>); when AWS cannot be reached
       #                              (no credentials, no network, no permission) they go to Postgres,
-      #                              encrypted with TOKEN_ENC_KEY. Use `local` to skip AWS entirely.
+      #                              encrypted with TOKEN_ENC_KEY. Use `local` to skip AWS entirely
+      #                              (APP_TOKEN_PROVIDER=local in .env, e.g. on a laptop).
       REGISTRY: postgres
-      TOKEN_PROVIDER: secrets
+      TOKEN_PROVIDER: ${APP_TOKEN_PROVIDER:-secrets}
       # boto3 (Bedrock, S3, Secrets Manager, SES) needs a region; Bedrock's default model is a
       # `us.` profile, so keep this a US region. Credentials come from the EC2 instance role.
       AWS_REGION: ${AWS_REGION:-us-east-1}
@@ -68,7 +74,15 @@ services:
       # baked into bundles), to verification, and to the OAuth token calls.
       UPSTREAM_REWRITES: http://localhost:9000=http://demo-api:9000,http://localhost:9100=http://oauth:9100
     ports: ["8000:8000"]
-    depends_on: [postgres, redis, demo-api, oauth]
+    # MODE=local keeps bundles in /app/generated: without a volume a rebuild (deploy.sh) would
+    # delete them while the registry still points at them.
+    volumes: [generated:/app/generated]
+    depends_on:
+      postgres: { condition: service_healthy }
+      seed: { condition: service_completed_successfully }
+      redis: { condition: service_started }
+      demo-api: { condition: service_started }
+      oauth: { condition: service_started }
     restart: unless-stopped
 
   # One-shot: parse + map every service in the catalog into the registry (Postgres), so publish()
@@ -88,15 +102,17 @@ services:
 
   caddy:                # HTTPS on EC2 (needs DOMAIN in .env and DNS pointing here)
     profiles: ["ec2"]
-    image: caddy:2
+    # Caddy + the built React app (infra/Dockerfile.web), so EC2 needs no Node.
+    build: { context: ., dockerfile: infra/Dockerfile.web }
     environment:
       DOMAIN: ${DOMAIN:-localhost}
     ports: ["80:80", "443:443"]
     volumes:
-      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
     depends_on: [app]
     restart: unless-stopped
 
 volumes:
   caddy_data:
+  pgdata:
+  generated:

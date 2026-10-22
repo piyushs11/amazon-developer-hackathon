@@ -35,6 +35,30 @@ class PublishStatus(BaseModel):
     error: JobError | None = None
 
 
+class ResolveRequest(BaseModel):
+    """C7: {input_type, webpage_url?, name_location?}, or just {query} with whatever was typed."""
+    input_type: Literal["url", "name_location"] | None = None
+    webpage_url: str | None = Field(default=None, max_length=2048)
+    name_location: dict | None = None
+    query: str | None = Field(default=None, max_length=2048)
+
+
+class ServiceTool(BaseModel):
+    name: str
+    description: str
+    read_only: bool
+
+
+class ServiceDetails(BaseModel):
+    service_uuid: str
+    service_name: str
+    domain: str
+    published: bool  # has an active bundle (the same for every user)
+    version: str | None = None
+    mcp_url: str | None = None
+    tools: list[ServiceTool] = []
+
+
 class MyService(BaseModel):
     service_uuid: str
     service_name: str

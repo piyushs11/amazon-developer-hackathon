@@ -1,12 +1,23 @@
 {$DOMAIN} {
+	encode gzip
+
 	# Fake OAuth authorize page, reachable from the user's browser on EC2.
 	# Set AUTHORIZE_REWRITES=http://localhost:9100=https://{$DOMAIN}/mock-oauth for the app.
 	handle_path /mock-oauth/* {
 		reverse_proxy oauth:9100
 	}
 
-	# API + MCP gateway (/auth, /api, /oauth, /mcp/{service_uuid}, /health)
-	handle {
+	# API + MCP gateway. The frontend's own routes (/, /client/*, /owner/*, /review/*,
+	# /connect/done) never start with these, so one domain serves both (no CORS needed).
+	@api path /health /auth/* /oauth/* /publish /publish/* /me/* /mcp/* /services/* /resolve-service /docs /openapi.json
+	handle @api {
 		reverse_proxy app:8000
+	}
+
+	# The React app (frontend/dist, built with VITE_API_URL empty = same origin).
+	handle {
+		root * /srv/www
+		try_files {path} /index.html
+		file_server
 	}
 }

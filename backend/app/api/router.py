@@ -1,4 +1,4 @@
-"""REST API (contract C7): OAuth connect, publish jobs, and the user's service list.
+"""REST API (contract C7): find a service, OAuth connect, publish jobs, the user's services.
 
 POST /auth/demo-login lives in backend/app/auth/router.py and POST /mcp/{service_uuid} in the
 gateway. Every route here except /oauth/callback takes the user token (`get_current_user`:
@@ -8,9 +8,12 @@ import asyncio
 import logging
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import RedirectResponse
+from pydantic import ValidationError
 
+from backend.app.api import catalog
+from backend.app.api.catalog import guess_input
 from backend.app.api.jobs import get_jobs
 from backend.app.api.schemas import (
     SERVICE_UUID_PATTERN,
@@ -19,6 +22,8 @@ from backend.app.api.schemas import (
     PublishRequest,
     PublishStarted,
     PublishStatus,
+    ResolveRequest,
+    ServiceDetails,
 )
 from backend.app.auth.identity import get_current_user
 from backend.app.auth.oauth import (
@@ -28,10 +33,47 @@ from backend.app.auth.oauth import (
     callback_redirect,
     handle_callback,
 )
+from backend.app.resolver import ResolveResponse, ServiceResolverInput
 
 log = logging.getLogger("mcp_bridge.api")
 router = APIRouter(tags=["api"])
 _SERVICE_UUID = re.compile(SERVICE_UUID_PATTERN)
+
+
+# ---- Find a service (S1) ----
+
+@router.post("/resolve-service", response_model=ResolveResponse)
+async def resolve_service(
+    body: ResolveRequest, _user_id: str = Depends(get_current_user)
+) -> ResolveResponse:
+    try:
+        if body.query is not None:
+            query = guess_input(body.query)
+        else:
+            query = ServiceResolverInput.model_validate(body.model_dump(exclude={"query"}))
+    except ValidationError as exc:
+        raise HTTPException(422, exc.errors()[0]["msg"]) from None
+    try:
+        return await asyncio.to_thread(catalog.resolve_service, query)
+    except Exception:
+        log.exception("resolve-service failed")
+        raise HTTPException(503, "could not search services, please try again") from None
+
+
+@router.get("/services/{service_uuid}", response_model=ServiceDetails)
+async def service_details(
+    service_uuid: str, _user_id: str = Depends(get_current_user)
+) -> ServiceDetails:
+    if not _SERVICE_UUID.match(service_uuid):
+        raise HTTPException(422, "service_uuid: letters, digits and '-' only")
+    try:
+        details = await asyncio.to_thread(catalog.service_details, service_uuid)
+    except Exception:
+        log.exception("services/%s failed", service_uuid)
+        raise HTTPException(503, "could not load the service, please try again") from None
+    if details is None:
+        raise HTTPException(404, "unknown service")
+    return details
 
 
 # ---- OAuth: connect a service ----
@@ -120,3 +162,30 @@ async def my_services(user_id: str = Depends(get_current_user)) -> list[MyServic
     except Exception:
         log.exception("me/services failed")
         raise HTTPException(503, "could not load your services, please try again") from None
+
+
+def _disconnect(user_id: str, service_uuid: str) -> bool:
+    from backend.app.auth.factory import get_mapping, get_token_store
+
+    mapping = get_mapping()
+    connection = mapping.get_connection(user_id, service_uuid)
+    if connection is None or connection.status == "revoked":
+        return False
+    get_token_store().delete(user_id, service_uuid)  # the stored upstream token is gone for good
+    mapping.upsert_connection(user_id, service_uuid, "revoked")
+    return True
+
+
+@router.delete("/me/services/{service_uuid}", status_code=204)
+async def disconnect(service_uuid: str, user_id: str = Depends(get_current_user)) -> Response:
+    """Forget this user's connection. The service stays published for everyone else."""
+    if not _SERVICE_UUID.match(service_uuid):
+        raise HTTPException(422, "service_uuid: letters, digits and '-' only")
+    try:
+        found = await asyncio.to_thread(_disconnect, user_id, service_uuid)
+    except Exception:
+        log.exception("disconnect failed service_uuid=%s", service_uuid)
+        raise HTTPException(503, "could not disconnect, please try again") from None
+    if not found:
+        raise HTTPException(404, "not connected")
+    return Response(status_code=204)
