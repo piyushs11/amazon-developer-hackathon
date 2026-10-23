@@ -44,9 +44,12 @@ book under) is missing, do not call it; reply with one short question for that v
 4. The user can switch between services at any time. Go by what they ask for now, not by the \
 service used before. If the request could fit tools of two different services equally well and \
 they did not say which, do not guess: reply with one short question naming the services.
-5. If the request needs no tool (a greeting, thanks, something unrelated), reply in one short \
+5. Never write what a service returned yourself (menus, dishes, prices, orders, availability, \
+times), and never write "I found ...". Even if you remember an answer from earlier in the chat, \
+call the tool again: only a tool call produces an answer.
+6. If the request needs no tool (a greeting, thanks, something unrelated), reply in one short \
 sentence and say what you can help with.
-6. Never say an action was done. Actions only happen after a tool is called and the user confirms.
+7. Never say an action was done. Actions only happen after a tool is called and the user confirms.
 
 Output format: do not explain your reasoning and do not write <thinking> tags. Either call a tool, \
 or reply in plain text under 25 words with no markdown and no tags."""
@@ -89,11 +92,12 @@ def get_client():
 
 _THINK = re.compile(r"<thinking>.*?(</thinking>|\Z)", re.IGNORECASE | re.DOTALL)
 _TAGS = re.compile(r"</?\s*(thinking|response|answer|reply)\s*>", re.IGNORECASE)
+_RECORD = re.compile(r"\[(?:ran|showed|waiting)[^\]]*\]", re.IGNORECASE)  # copied from old history formats
 
 
 def clean_text(text: str) -> str:
     """The model's reply without any reasoning it wrote out (<thinking>...</thinking>) or tags."""
-    return _TAGS.sub("", _THINK.sub("", text)).strip()
+    return " ".join(_RECORD.sub("", _TAGS.sub("", _THINK.sub("", text))).split())
 
 
 def _slug(text: str) -> str:
@@ -247,7 +251,8 @@ greetings and wording."""
 def summarise(previous: str, old: list[dict], *, client=None, model=None) -> str:
     """Fold `old` messages into the running summary. Raises on any LLM problem (the caller then
     folds crudely, see history.record)."""
-    lines = "\n".join(f"{'User' if m['role'] == 'user' else 'Alexa'}: {m['text']}" for m in old)
+    lines = "\n".join(f"{'User' if m['role'] == 'user' else 'Alexa'}: {m['text']}"
+                      + (f" ({m['note']})" if m.get("note") else "") for m in old)
     prompt = f"Previous summary: {previous or '(none)'}\n\nNew messages:\n{lines}"
     reply = (client or get_client()).converse(
         modelId=model or model_id(),

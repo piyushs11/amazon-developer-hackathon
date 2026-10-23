@@ -2,8 +2,11 @@
 
 The model is stateless, so every turn it is handed what happened so far, in two parts:
 
-  _recent    the last few messages, word for word (user + Alexa, with a note of any tool that ran
-             and any items shown, so "the first one" or "two of those" can be resolved)
+  _recent    the last few messages, word for word (user + Alexa). An Alexa entry can carry a
+             `note`: the tool that ran and the items shown, so "the first one" or "two of those"
+             can be resolved. Notes are given to the model as a record in the system prompt,
+             never inside its own past messages: models copy the shape of their earlier turns,
+             and one that sees "answer [ran tool]" starts writing answers instead of calling tools.
   _summary   a short rolling summary of everything older, written by the model itself
 
 When `_recent` grows past TRIGGER messages, the oldest ones are folded into `_summary` and only
@@ -26,6 +29,7 @@ SUMMARY_KEY = "_summary"
 TRIGGER = 6  # fold when more than this many messages are kept word for word
 KEEP = 4  # ...leaving this many (the last two exchanges)
 MAX_ENTRY_CHARS = 300  # one message
+MAX_NOTE_CHARS = 240
 MAX_SUMMARY_CHARS = 700
 
 
@@ -39,7 +43,10 @@ def recent(memory: dict | None) -> list[dict]:
     out = []
     for m in (memory or {}).get(RECENT_KEY) or []:
         if isinstance(m, dict) and m.get("role") in ("user", "assistant") and isinstance(m.get("text"), str):
-            out.append({"role": m["role"], "text": m["text"]})
+            entry = {"role": m["role"], "text": m["text"]}
+            if m["role"] == "assistant" and isinstance(m.get("note"), str) and m["note"]:
+                entry["note"] = m["note"]
+            out.append(entry)
     return out
 
 
@@ -53,13 +60,10 @@ def record(memory: dict, *, user: str, alexa: str, note: str = "", summarise=Non
 
     `summarise(previous_summary, old_messages) -> str` writes the new summary; if it is missing or
     raises, the old messages are folded in crudely (what the user asked) so nothing breaks."""
-    reply = _clip(alexa, MAX_ENTRY_CHARS)
+    answer = {"role": "assistant", "text": _clip(alexa, MAX_ENTRY_CHARS)}
     if note:
-        reply = _clip(f"{reply} {note}", MAX_ENTRY_CHARS + 200)
-    msgs = recent(memory) + [
-        {"role": "user", "text": _clip(user, MAX_ENTRY_CHARS)},
-        {"role": "assistant", "text": reply},
-    ]
+        answer["note"] = _clip(note, MAX_NOTE_CHARS)
+    msgs = recent(memory) + [{"role": "user", "text": _clip(user, MAX_ENTRY_CHARS)}, answer]
     if len(msgs) > TRIGGER:
         old, msgs = msgs[:-KEEP], msgs[-KEEP:]
         previous = summary(memory)
@@ -91,6 +95,14 @@ def messages(memory: dict | None, text: str) -> list[dict]:
 
 
 def context(memory: dict | None) -> str:
-    """The summary, worded for the system prompt ('' when there is none yet)."""
+    """The summary and the tools run lately, worded for the system prompt ('' when there is neither)."""
+    parts = []
     s = summary(memory)
-    return f"Summary of the earlier conversation: {s}" if s else ""
+    if s:
+        parts.append(f"Summary of the earlier conversation: {s}")
+    notes = [m["note"] for m in recent(memory) if m.get("note")]
+    if notes:
+        parts.append("Record of what the system did in the last turns (use it to resolve words like "
+                     "\"this\" or \"the first one\"; it is not text to copy, and anything new still needs "
+                     "a tool call):\n" + "\n".join(f"- {n}" for n in notes))
+    return "\n\n".join(parts)

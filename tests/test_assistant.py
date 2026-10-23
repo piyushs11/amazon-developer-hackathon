@@ -336,7 +336,9 @@ def test_model_gets_the_earlier_turns_so_follow_ups_resolve(llm_on):
     sent = stub.routed[1]["messages"]
     assert [m["role"] for m in sent] == ["user", "assistant", "user"]
     assert sent[0]["content"][0]["text"] == "anything in dessert?"
-    assert "[ran Demo Bistro/search_menu" in sent[1]["content"][0]["text"]
+    assert sent[1]["content"][0]["text"] == "I found 1 dishes at Demo Bistro, including Tiramisu."  # no notes in it
+    record = stub.routed[1]["system"][0]["text"]  # the record of what ran is in the system prompt
+    assert 'ran Demo Bistro/search_menu {"query": "dessert"}' in record and "shown: Tiramisu" in record
     assert sent[2]["content"][0]["text"] == "okay order 2 for me"
 
 
@@ -604,3 +606,38 @@ def test_llm_known_ids_are_labelled_with_their_service(llm_on):
     MultiWorld(live=BOTH).ask("where is my order", memory=memory)
     system = stub.routed[0]["system"][0]["text"]
     assert "[Demo Bistro] order_id = A2001" in system and "[Lakeside Dental] appointment_id = apt_900" in system
+
+
+def test_history_never_shows_the_model_its_own_turns_with_tool_notes(llm_on):
+    """Regression: with "answer [ran tool]" in its past messages the model started writing such
+    answers itself instead of calling the tool, so nothing ran and the results were made up."""
+    stub = llm_on(ScriptedBedrock([("search_menu", {"query": "dessert"}), ("search_menu", {"query": "salad"})]))
+    world = FakeWorld()
+    first = world.ask("are there more desserts from this store?")
+    world.ask("no its fine ill take salads, list me its options", memory=first["memory"])
+    for m in stub.routed[1]["messages"]:
+        assert "[" not in m["content"][0]["text"] and "ran " not in m["content"][0]["text"]
+    assert [c[0] for c in world.calls] == ["search_menu", "search_menu"]  # the tool really ran again
+
+
+def test_a_made_up_answer_without_a_tool_call_is_replaced_by_the_real_tool(llm_on):
+    llm_on(StubBedrock(text="I found 1 salad at Demo Bistro, including Caesar Salad. [ran Demo Bistro/search_menu]"))
+    world = FakeWorld()
+    out = world.ask("what salads does Demo Bistro have")
+    assert [c[0] for c in world.calls] == ["search_menu"]  # nothing was invented: the tool ran
+    # the menu has no salad: the real answer is the business's "nothing found", not the invented dish
+    assert out["reply"] == "I couldn't find any dishes matching that." and out.get("call")
+    assert "Caesar" not in out["reply"] and "[ran" not in out["reply"]
+
+
+def test_a_question_from_the_model_is_still_kept(llm_on):
+    llm_on(StubBedrock(text="Which order do you mean?"))
+    world = FakeWorld()
+    out = world.ask("what is the status of order A1042")  # the rules would match, but the model asked
+    assert out["kind"] == "none" and out["reply"] == "Which order do you mean?" and world.calls == []
+
+
+def test_record_tags_copied_from_old_history_are_stripped():
+    from backend.app.assistant import llm
+
+    assert llm.clean_text("Sure. [ran Demo Bistro/search_menu {}] [showed: Tiramisu (6.5)]") == "Sure."

@@ -402,13 +402,13 @@ def _note(kind: str, extra: dict) -> str:
     call_info = extra.get("call")
     if call_info:
         args = json.dumps(call_info.get("arguments") or {}, ensure_ascii=False)
-        parts.append(f"[ran {call_info.get('service_name', '')}/{call_info['tool']} {args}]")
+        parts.append(f"ran {call_info.get('service_name', '')}/{call_info['tool']} {args}.")
     items = extra.get("items") or []
     if items:
         shown = ", ".join(i["name"] + (f" ({i['price']})" if i.get("price") is not None else "") for i in items[:8])
-        parts.append(f"[showed: {shown}]")
+        parts.append(f"The user was shown: {shown}.")
     if kind == "confirm":
-        parts.append("[waiting for the user to say yes or no]")
+        parts.append("Asked the user to confirm; waiting for yes or no.")
     return " ".join(parts)
 
 
@@ -508,9 +508,14 @@ def answer(*, text: str, pending: dict | None, memory: dict, services: list[Serv
         except Exception as e:  # noqa: BLE001 - any LLM problem: use the rule-based matcher this turn
             log.warning("assistant llm routing failed (%s: %s); using the rules", type(e).__name__, e)
         else:
-            if routed.tool is None:  # small talk, a question for the user, or a missing value
-                return reply(routed.message, "none")
-            found, llm_args = (routed.service, routed.tool, 0.0), routed.args
+            if routed.tool is not None:
+                found, llm_args = (routed.service, routed.tool, 0.0), routed.args
+            elif routed.message.rstrip().endswith("?") or not chosen_by_rules.found:
+                return reply(routed.message, "none")  # small talk, or a question for the user
+            else:
+                # The model wrote a statement ("I found 2 desserts...") for something that is plainly a
+                # tool request. Nothing ran, so it is made up: use the tool the rules found instead.
+                log.warning("assistant llm answered without calling a tool (%r); using the rules", routed.message[:80])
     if found is None:
         if chosen_by_rules.ask:  # the LLM failed on an ambiguous request
             return ask_which(chosen_by_rules.ask)
