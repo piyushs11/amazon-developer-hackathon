@@ -7,7 +7,10 @@
   "oauth": {
     "auth_url": "http://localhost:9100/authorize",
     "token_url": "http://localhost:9100/token",
-    "scopes": ["read", "order"]
+    "scopes": [
+      "read",
+      "order"
+    ]
   },
   "endpoints": [
     {
@@ -16,8 +19,13 @@
       "method": "GET",
       "description": "Search the menu for dishes.",
       "params": [
-        {"name": "query", "type": "string", "required": true,
-         "location": "query", "description": "Dish name or keyword, e.g. pasta"}
+        {
+          "name": "query",
+          "type": "string",
+          "required": true,
+          "location": "query",
+          "description": "Dish name or keyword, e.g. pasta"
+        }
       ]
     },
     {
@@ -26,8 +34,13 @@
       "method": "GET",
       "description": "Get the status of an order by its ID.",
       "params": [
-        {"name": "order_id", "type": "string", "required": true,
-         "location": "path", "description": "Order ID, e.g. A1042"}
+        {
+          "name": "order_id",
+          "type": "string",
+          "required": true,
+          "location": "path",
+          "description": "Order ID, e.g. A1042"
+        }
       ]
     },
     {
@@ -36,11 +49,92 @@
       "method": "POST",
       "description": "Place an order for a dish.",
       "params": [
-        {"name": "item", "type": "string", "required": true,
-         "location": "body", "description": "Name of the dish to order"},
-        {"name": "quantity", "type": "integer", "required": true,
-         "location": "body", "description": "Number of portions"}
+        {
+          "name": "item",
+          "type": "string",
+          "required": true,
+          "location": "body",
+          "description": "Name of the dish to order"
+        },
+        {
+          "name": "quantity",
+          "type": "integer",
+          "required": true,
+          "location": "body",
+          "description": "Number of portions"
+        }
       ]
     }
-  ]
+  ],
+  "profile": {
+    "description": "Neighborhood bistro with pickup and delivery. Search the menu, place orders and check on them.",
+    "tagline": "Search the menu, order and track it",
+    "category": "Food & drink",
+    "city": "Chicago",
+    "color": "#b23a1e",
+    "initials": "DB",
+    "glyph": "utensils",
+    "auth_host": "auth.demobistro.test",
+    "privacy_url": "https://demobistro.test/privacy",
+    "terms_url": "https://demobistro.test/terms",
+    "scope_labels": {
+      "read": "See the menu and your orders",
+      "order": "Place orders for you"
+    },
+    "phrases": [
+      "what pasta does Demo Bistro have",
+      "what is the status of order A1042",
+      "order a margherita pizza from Demo Bistro"
+    ],
+    "tools": {
+      "search_menu": {
+        "title": "Search the menu",
+        "side_effect": "none",
+        "example_phrases": [
+          "what's on the menu at Demo Bistro",
+          "what pasta does Demo Bistro have",
+          "does Demo Bistro have pizza"
+        ],
+        "example_args": {
+          "query": "pasta"
+        },
+        "speakable_response": "I found {count:results} dishes at Demo Bistro, including {list:results.name}.",
+        "empty_response": "I couldn't find any dishes matching that."
+      },
+      "get_order_status": {
+        "title": "Check an order",
+        "side_effect": "none",
+        "example_phrases": [
+          "what is the status of order A1042",
+          "where is my Demo Bistro order",
+          "track my order"
+        ],
+        "example_args": {
+          "order_id": "A1042"
+        },
+        "speakable_response": "Order {order_id} is {status}. It should be with you in about {eta_minutes} minutes.",
+        "error_responses": {
+          "404": "I couldn't find that order on your Demo Bistro account."
+        }
+      },
+      "place_order": {
+        "title": "Place an order",
+        "side_effect": "payment",
+        "example_phrases": [
+          "order a margherita pizza from Demo Bistro",
+          "get me two tiramisu from Demo Bistro"
+        ],
+        "example_args": {
+          "item": "Tiramisu",
+          "quantity": 1
+        },
+        "requires_confirmation": true,
+        "confirmation_prompt": "Should I order {quantity} × {item} from Demo Bistro?",
+        "speakable_response": "Done. Order {order_id}: {quantity} × {item}. It should be ready in about {eta_minutes} minutes.",
+        "error_responses": {
+          "422": "Demo Bistro didn't accept that order."
+        }
+      }
+    }
+  }
 }

@@ -5,10 +5,11 @@ REGISTRY=memory   -> the contract fixtures (contracts/fixtures/spec.*.json + map
                      `make dev` works without Postgres
 """
 import json
+import re
 from functools import cache
 from pathlib import Path
 
-from backend.app.api.schemas import ServiceDetails, ServiceTool
+from backend.app.api.schemas import ServiceDetails, ServiceSummary, ServiceTool
 from backend.app.auth.settings import get_settings
 from backend.app.resolver import (
     NameLocation,
@@ -61,12 +62,21 @@ def resolve_service(query: ServiceResolverInput) -> ResolveResponse:
     return _resolve_fixture(query)
 
 
+_NAME_IN_CITY = re.compile(r"^(?P<name>.+?)(?:\s+in\s+|\s*,\s*)(?P<city>[A-Za-z][A-Za-z .'-]*)$", re.IGNORECASE)
+
+
 def guess_input(text: str) -> ServiceResolverInput:
-    """What the user typed: a URL/domain if it has a dot or slash, otherwise a name."""
+    """What the user typed: a URL/domain if it has a dot or slash, otherwise a name, optionally
+    with a city ("Lakeside in Chicago", "Lakeside, Evanston")."""
     text = text.strip()
     if "." in text or "/" in text:
         return ServiceResolverInput(input_type="url", webpage_url=text)
-    return ServiceResolverInput(input_type="name_location", name_location=NameLocation(name=text))
+    m = _NAME_IN_CITY.match(text)
+    if m:
+        where = NameLocation(name=m["name"].strip(), city=m["city"].strip())
+    else:
+        where = NameLocation(name=text)
+    return ServiceResolverInput(input_type="name_location", name_location=where)
 
 
 def _tools(endpoints: list[dict]) -> list[ServiceTool]:
@@ -74,28 +84,62 @@ def _tools(endpoints: list[dict]) -> list[ServiceTool]:
                         read_only=bool(e["read_only"])) for e in endpoints]
 
 
+def _connected_users(service_uuid: str) -> int:
+    from backend.app.auth.factory import get_mapping
+
+    try:
+        return get_mapping().count_for_service(service_uuid)
+    except Exception:  # noqa: BLE001 - a count is decoration; never fail the page for it
+        return 0
+
+
 def service_details(service_uuid: str) -> ServiceDetails | None:
     """Public details of one service (no user data). Blocking: call from a thread."""
     from backend.app.deploy import mcp_url
     from backend.app.gateway.bundles import get_registry
 
+    published_at = None
     if get_settings().registry == "postgres":
         from backend.app.db import registry
 
         row = registry.get_service(service_uuid)
         if row is None:
             return None
-        name, domain = row.service_name, row.domain
+        name, domain, profile = row.service_name, row.domain, row.profile or {}
+        scopes = row.oauth.scopes if row.oauth else []
+        published_at = row.published_at
         tools = _tools([e.model_dump() for e in registry.get_endpoints(service_uuid)])
     else:
         spec = _fixture("spec").get(service_uuid)
         if spec is None:
             return None
-        name, domain = spec["service_name"], spec["domain"]
+        name, domain, profile = spec["service_name"], spec["domain"], spec.get("profile") or {}
+        scopes = (spec.get("oauth") or {}).get("scopes", [])
         tools = _tools(_fixture("mapped").get(service_uuid, {}).get("endpoints", []))
-    active = get_registry().get_active_bundle(service_uuid)
+    registry_ = get_registry()
+    active = registry_.get_active_bundle(service_uuid)
+    stale = getattr(registry_, "spec_changed", None)
     return ServiceDetails(
         service_uuid=service_uuid, service_name=name, domain=domain, tools=tools,
         published=active is not None, version=active.version if active else None,
         mcp_url=mcp_url(service_uuid) if active else None,
+        profile=profile, scopes=scopes, published_at=published_at if active else None,
+        connected_users=_connected_users(service_uuid),
+        update_available=bool(active and stale and stale(service_uuid)),
     )
+
+
+def list_catalog() -> list[ServiceSummary]:
+    """Every listed service (the ones with a profile). Blocking: call from a thread."""
+    if get_settings().registry == "postgres":
+        from backend.app.db import registry
+
+        return [ServiceSummary(service_uuid=r.service_uuid, service_name=r.service_name, domain=r.domain,
+                               published=r.active_version is not None, profile=r.profile or {})
+                for r in registry.list_services()]
+    from backend.app.gateway.bundles import get_registry
+
+    return [ServiceSummary(service_uuid=u, service_name=s["service_name"], domain=s["domain"],
+                           published=get_registry().get_active_bundle(u) is not None,
+                           profile=s.get("profile") or {})
+            for u, s in _fixture("spec").items() if s.get("profile")]

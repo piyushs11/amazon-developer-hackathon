@@ -9,10 +9,15 @@ export default function Home() {
   const { backend, me, openSim, rowAction, goSearch } = useClient();
   const navigate = useNavigate();
   const list = backend.myServices(me.id);
-  const bistroReady = backend.access(me.id, DB) === 'ok';
 
   const suggestions = [];
-  if (bistroReady) {
+  if (backend.live) {
+    // One suggestion per live service, from the example phrases its business wrote.
+    list.filter((s) => s.status === 'active' && s.on && s.askPhrase).slice(0, 3).forEach((s) => {
+      const phrase = s.askPhrase;
+      suggestions.push({ t: phrase[0].toUpperCase() + phrase.slice(1), s: s.name + ' · ' + (s.tagline || s.category), ic: s.glyph || 'bolt', c: s.color, go: () => openSim({ send: phrase }) });
+    });
+  } else if (backend.access(me.id, DB) === 'ok') {
     suggestions.push({ t: 'Check order A1042', s: 'Demo Bistro · "what is the status of order A1042"', ic: 'clock', c: '#126dff', go: () => openSim({ send: 'What is the status of order A1042' }) });
     suggestions.push({ t: 'Order from Demo Bistro', s: 'Try "order a paneer wrap from Demo Bistro"', ic: 'utensils', c: '#b23a1e', go: () => openSim({ send: 'What wraps does Demo Bistro have' }) });
   }
@@ -25,7 +30,8 @@ export default function Home() {
       ic: 'alert', c: '#cc0c39', go: () => rowAction(fix.uuid),
     });
   }
-  suggestions.push({ t: list.length ? 'Onboard another service' : 'Onboard a service', s: 'Search by website, like demobistro.test', ic: 'search', c: '#1f6f8b', go: goSearch });
+  const example = backend.catalogList?.()[0]?.domain || (backend.live ? 'example.com' : 'demobistro.test');
+  suggestions.push({ t: list.length ? 'Onboard another service' : 'Onboard a service', s: 'Search by website, like ' + example, ic: 'search', c: '#1f6f8b', go: goSearch });
 
   return (
     <div className="app home">

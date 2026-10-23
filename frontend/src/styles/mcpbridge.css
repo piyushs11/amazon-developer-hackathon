@@ -131,6 +131,7 @@ svg.i.l{width:24px;height:24px}
 .tag.blue{background:var(--blue-tint);color:var(--blue-dark)}
 .tag.dark{background:#4b5060;color:#fff}
 .tag.outline{background:#fff;border:1px solid var(--line)}
+.not-built{display:inline-flex;align-items:center;height:20px;padding:0 7px;border-radius:var(--r-xs);font-size:11px;font-weight:700;letter-spacing:.02em;background:var(--fill-2);color:var(--fg-2);border:1px dashed var(--fg-3);white-space:nowrap;vertical-align:middle;cursor:help}
 
 /* ---------- Surfaces ---------- */
 .card{background:#fff;border:1px solid var(--line);border-radius:var(--r-m);padding:20px}

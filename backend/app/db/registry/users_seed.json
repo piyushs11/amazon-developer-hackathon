@@ -1,0 +1,15 @@
+{
+  "users": [
+    {"user_id": "alice", "display_name": "Alice", "email": "alice@example.com", "color": "#126dff", "role": "user"},
+    {"user_id": "bob", "display_name": "Bob", "email": "bob@example.com", "color": "#6b4ee6", "role": "user"},
+    {"user_id": "demobistro-owner", "display_name": "Dana Okafor", "email": "owner@demobistro.example", "color": "#b23a1e", "role": "owner"},
+    {"user_id": "lakeside-owner", "display_name": "Sam Lee", "email": "ops@lakeside.example", "color": "#1f6f8b", "role": "owner"},
+    {"user_id": "pinepetal-owner", "display_name": "Priya Shah", "email": "hello@pinepetal.example", "color": "#a3456b", "role": "owner"},
+    {"user_id": "freshcart-owner", "display_name": "Taylor Brooks", "email": "partners@freshcart.example", "color": "#2e7d32", "role": "owner"},
+    {"user_id": "quickfix-owner", "display_name": "Marco Diaz", "email": "info@quickfix.example", "color": "#8a5a00", "role": "owner"},
+    {"user_id": "reviewer", "display_name": "Jordan Rivera", "email": "jordan.rivera@amazon.example", "color": "#232f3e", "role": "reviewer"}
+  ],
+  "connections": [
+    {"user_id": "bob", "service_uuid": "22222222-2222-2222-2222-222222222222", "status": "expired", "note": "Bob connected Lakeside Dental last week; the sign-in has since expired (shows the reconnect flow)."}
+  ]
+}

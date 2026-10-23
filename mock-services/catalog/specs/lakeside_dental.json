@@ -1,0 +1,149 @@
+{
+  "service_uuid": "22222222-2222-2222-2222-222222222222",
+  "service_name": "Lakeside Dental",
+  "domain": "lakesidedental.test",
+  "base_url": "http://localhost:9300/dental",
+  "auth_type": "oauth2",
+  "oauth": {
+    "auth_url": "http://localhost:9100/authorize",
+    "token_url": "http://localhost:9100/token",
+    "scopes": [
+      "appointments"
+    ]
+  },
+  "endpoints": [
+    {
+      "id": "next_available",
+      "path": "/slots",
+      "method": "GET",
+      "description": "List the next open appointment slots.",
+      "params": [
+        {
+          "name": "visit_type",
+          "type": "string",
+          "required": false,
+          "location": "query",
+          "description": "cleaning, checkup or emergency"
+        }
+      ]
+    },
+    {
+      "id": "book_appointment",
+      "path": "/appointments",
+      "method": "POST",
+      "description": "Book an open slot.",
+      "params": [
+        {
+          "name": "slot_id",
+          "type": "string",
+          "required": true,
+          "location": "body",
+          "description": "A slot id from next_available, e.g. slot_0914"
+        }
+      ]
+    },
+    {
+      "id": "my_appointments",
+      "path": "/appointments",
+      "method": "GET",
+      "description": "List your upcoming appointments.",
+      "params": []
+    },
+    {
+      "id": "cancel_appointment",
+      "path": "/appointments/{appointment_id}/cancel",
+      "method": "POST",
+      "description": "Cancel one of your appointments.",
+      "params": [
+        {
+          "name": "appointment_id",
+          "type": "string",
+          "required": true,
+          "location": "path",
+          "description": "Appointment id, e.g. apt_5521"
+        }
+      ]
+    }
+  ],
+  "profile": {
+    "description": "Family dental practice. Find open slots, book and cancel appointments.",
+    "tagline": "Book and manage appointments",
+    "category": "Health & wellness",
+    "city": "Evanston",
+    "color": "#1f6f8b",
+    "initials": "LD",
+    "glyph": "calendar",
+    "auth_host": "patients.lakesidedental.test",
+    "privacy_url": "https://lakesidedental.test/privacy",
+    "terms_url": "https://lakesidedental.test/terms",
+    "scope_labels": {
+      "appointments": "See and book your appointments"
+    },
+    "phrases": [
+      "when is the next cleaning at Lakeside Dental",
+      "book slot_0914 at Lakeside Dental",
+      "what appointments do I have at Lakeside Dental"
+    ],
+    "tools": {
+      "next_available": {
+        "title": "Next open slots",
+        "side_effect": "none",
+        "example_phrases": [
+          "when is the next cleaning at Lakeside Dental",
+          "next available dentist appointment",
+          "open slots at Lakeside Dental"
+        ],
+        "example_args": {
+          "visit_type": "cleaning"
+        },
+        "speakable_response": "The next openings are {list:slots.label}.",
+        "empty_response": "There are no open slots right now."
+      },
+      "book_appointment": {
+        "title": "Book an appointment",
+        "side_effect": "write",
+        "example_phrases": [
+          "book slot_0914 at Lakeside Dental",
+          "book a dentist appointment"
+        ],
+        "example_args": {
+          "slot_id": "slot_0914"
+        },
+        "requires_confirmation": true,
+        "confirmation_prompt": "Should I book {slot_id} at Lakeside Dental?",
+        "speakable_response": "Booked. Your appointment {appointment_id} is on {label}.",
+        "error_responses": {
+          "404": "That slot isn't available. Ask for the next open slots first.",
+          "409": "That slot was just taken."
+        }
+      },
+      "my_appointments": {
+        "title": "My appointments",
+        "side_effect": "none",
+        "example_phrases": [
+          "what appointments do I have at Lakeside Dental",
+          "when is my dentist appointment"
+        ],
+        "speakable_response": "You have {count:appointments} upcoming: {list:appointments.label}.",
+        "empty_response": "You have no upcoming appointments at Lakeside Dental."
+      },
+      "cancel_appointment": {
+        "title": "Cancel an appointment",
+        "side_effect": "write",
+        "example_phrases": [
+          "cancel my Lakeside Dental appointment apt_5521",
+          "cancel appointment"
+        ],
+        "example_args": {
+          "appointment_id": "apt_5521"
+        },
+        "requires_confirmation": true,
+        "confirmation_prompt": "Should I cancel appointment {appointment_id} at Lakeside Dental?",
+        "speakable_response": "Cancelled appointment {appointment_id}.",
+        "error_responses": {
+          "404": "I couldn't find that appointment."
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "service_uuid": "55555555-5555-5555-5555-555555555555",
+  "service_name": "Lakeside Grill",
+  "domain": "lakesidegrill.test",
+  "base_url": "http://localhost:9300/grill",
+  "auth_type": "oauth2",
+  "oauth": {
+    "auth_url": "http://localhost:9100/authorize",
+    "token_url": "http://localhost:9100/token",
+    "scopes": [
+      "bookings"
+    ]
+  },
+  "endpoints": [
+    {
+      "id": "todays_specials",
+      "path": "/specials",
+      "method": "GET",
+      "description": "Today's specials.",
+      "params": []
+    },
+    {
+      "id": "book_table",
+      "path": "/bookings",
+      "method": "POST",
+      "description": "Book a table.",
+      "params": [
+        {
+          "name": "party_size",
+          "type": "integer",
+          "required": true,
+          "location": "body",
+          "description": "Number of people"
+        },
+        {
+          "name": "time",
+          "type": "string",
+          "required": true,
+          "location": "body",
+          "description": "For example 7:30 PM"
+        }
+      ]
+    },
+    {
+      "id": "get_booking",
+      "path": "/bookings/{booking_id}",
+      "method": "GET",
+      "description": "Look up one of your bookings.",
+      "params": [
+        {
+          "name": "booking_id",
+          "type": "string",
+          "required": true,
+          "location": "path",
+          "description": "Booking id, e.g. BK208"
+        }
+      ]
+    }
+  ],
+  "profile": {
+    "description": "Lakefront grill. Hear today's specials and book a table.",
+    "tagline": "Daily specials and table bookings",
+    "category": "Food & drink",
+    "city": "Chicago",
+    "color": "#2f6b3a",
+    "initials": "LG",
+    "glyph": "utensils",
+    "auth_host": "login.lakesidegrill.test",
+    "privacy_url": "https://lakesidegrill.test/privacy",
+    "terms_url": "https://lakesidegrill.test/terms",
+    "scope_labels": {
+      "bookings": "See specials and book tables for you"
+    },
+    "phrases": [
+      "what are today's specials at Lakeside Grill",
+      "book a table for 2 at 7:30 PM at Lakeside Grill",
+      "check booking BK208"
+    ],
+    "tools": {
+      "todays_specials": {
+        "title": "Today's specials",
+        "side_effect": "none",
+        "example_phrases": [
+          "what are today's specials at Lakeside Grill",
+          "specials tonight"
+        ],
+        "speakable_response": "Today's specials are {list:specials.name}."
+      },
+      "book_table": {
+        "title": "Book a table",
+        "side_effect": "write",
+        "example_phrases": [
+          "book a table for 2 at 7:30 PM at Lakeside Grill",
+          "reserve a table"
+        ],
+        "example_args": {
+          "party_size": 2,
+          "time": "7:30 PM"
+        },
+        "requires_confirmation": true,
+        "confirmation_prompt": "Should I book a table for {party_size} at {time} at Lakeside Grill?",
+        "speakable_response": "Booked. Booking {booking_id}: a table for {party_size} at {time}."
+      },
+      "get_booking": {
+        "title": "Check a booking",
+        "side_effect": "none",
+        "example_phrases": [
+          "check booking BK208",
+          "is my Lakeside Grill booking confirmed"
+        ],
+        "example_args": {
+          "booking_id": "BK208"
+        },
+        "speakable_response": "Booking {booking_id} is {status}: a table for {party_size} at {time}.",
+        "error_responses": {
+          "404": "I couldn't find that booking."
+        }
+      }
+    }
+  }
+}

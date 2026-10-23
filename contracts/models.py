@@ -69,6 +69,9 @@ class ServiceSpec(BaseModel):
     auth_type: str
     oauth: OAuthConfig | None = None
     endpoints: list[EndpointSpec]
+    # How the service is shown and spoken (description, category, city, colors, example phrases,
+    # scope labels, per-tool confirmation/answer templates). Display data only: never code.
+    profile: dict | None = None
 
 
 # ---- C2: MappedService (mapper -> codegen) ----

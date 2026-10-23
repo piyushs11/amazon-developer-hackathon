@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import CopyButton from '../components/CopyButton.jsx';
 import { useOverlay } from '../components/Overlay.jsx';
 import Switch from '../components/Switch.jsx';
@@ -51,6 +52,7 @@ export function ConnectErrorSheet({ uuid, reason }) {
 export function ManageSheet({ uuid }) {
   const { backend, me, rowAction } = useClient();
   const overlay = useOverlay();
+  const toast = useToast();
   const s = backend.catalog[uuid];
   const l = backend.link(me.id, uuid);
   if (!l) return null;
@@ -62,12 +64,12 @@ export function ManageSheet({ uuid }) {
     <>
       <div className="app-sheet-head">
         <SheetLogo s={s} />
-        <div><h2 style={{ margin: 0 }}>{s.name}</h2><div className="muted small">Connected as {l.account} · {fmtDate(l.since)}</div></div>
+        <div><h2 style={{ margin: 0 }}>{s.name}</h2><div className="muted small">Connected as {l.account}{l.since ? ' · ' + fmtDate(l.since) : ''}</div></div>
       </div>
       {l.status === 'active' && (
         <div className="list-row" style={{ padding: '14px 0' }}>
           <span>Use with Alexa+</span>
-          <Switch on={l.on} onChange={(on) => backend.setEnabled(me.id, uuid, on)} style={{ marginLeft: 'auto' }} />
+          <Switch on={l.on} onChange={(on) => Promise.resolve(backend.setEnabled(me.id, uuid, on)).catch((e) => toast(e.message, 'err'))} style={{ marginLeft: 'auto' }} />
         </div>
       )}
       <div className="list-row" style={{ padding: '14px 0' }}><span>Status</span><span className={'status ' + st.cls} style={{ marginLeft: 'auto' }}>{st.label}</span></div>
@@ -108,9 +110,14 @@ function DisconnectSheet({ uuid }) {
   const overlay = useOverlay();
   const toast = useToast();
   const s = backend.catalog[uuid];
-  const confirm = () => {
+  const confirm = async () => {
     overlay.close();
-    backend.disconnect(me.id, uuid);
+    try {
+      await backend.disconnect(me.id, uuid);
+    } catch (e) {
+      toast(e.message, 'err');
+      return;
+    }
     toast(s.name + ' disconnected. Its token was revoked and deleted.', 'ok', 4500);
   };
   return (
@@ -142,13 +149,31 @@ export function PrivacySheet() {
 export function NotificationsSheet() {
   const { backend, me } = useClient();
   const overlay = useOverlay();
-  const items = backend.myServices(me.id).map((s) => s.name + ': ' + backend.statusOf(me.id, s.uuid).label.toLowerCase() + '.');
-  if (!items.length) items.push('Nothing new. Onboard a service to get started.');
+  // Real API: GET /me/notifications (publishes, expired sign-ins). Mock: the services' status.
+  const [notes, setNotes] = useState(null);
+  useEffect(() => {
+    if (!backend.notifications) return;
+    backend.notifications(me.id).then(setNotes).catch(() => setNotes([]));
+  }, [backend, me.id]);
+  let items;
+  if (backend.notifications) {
+    items = (notes || []).map((n) => ({ key: n.id, text: n.text, when: n.created_at, unread: !n.read }));
+    if (notes && !items.length) items.push({ key: 'none', text: 'Nothing new yet.' });
+  } else {
+    items = backend.myServices(me.id).map((s) => ({ key: s.uuid, text: s.name + ': ' + backend.statusOf(me.id, s.uuid).label.toLowerCase() + '.' }));
+    if (!items.length) items.push({ key: 'none', text: 'Nothing new. Onboard a service to get started.' });
+  }
   return (
     <>
       <h2>Notifications</h2>
       <div className="stack-s" style={{ marginTop: 8 }}>
-        {items.map((t) => <div className="tile" style={{ fontSize: 15 }} key={t}>{t}</div>)}
+        {notes === null && backend.notifications && <p className="muted">Loading...</p>}
+        {items.map((n) => (
+          <div className="tile" style={{ fontSize: 15, fontWeight: n.unread ? 600 : 400 }} key={n.key}>
+            {n.text}
+            {n.when && <div className="muted small" style={{ marginTop: 4 }}>{fmtDate(n.when)} at {fmtTime(n.when)}</div>}
+          </div>
+        ))}
       </div>
       <div className="actions"><button type="button" className="btn btn-secondary btn-lg" onClick={overlay.close}>Done</button></div>
     </>

@@ -1,0 +1,22 @@
+[
+  {"from_catalog": "11111111-1111-1111-1111-111111111111", "version": "0.9", "owner_user_id": "demobistro-owner",
+   "status": "rejected", "days_ago": 14, "reviewed_days_ago": 13, "without_confirmation": true,
+   "message": "First version for review.",
+   "reason": "place_order must ask before charging the card: add a confirmation prompt to the write endpoint."},
+  {"from_catalog": "11111111-1111-1111-1111-111111111111", "version": "1.0", "owner_user_id": "demobistro-owner",
+   "status": "approved", "days_ago": 11, "reviewed_days_ago": 10,
+   "message": "Added the confirmation prompt to place_order.", "note": "Looks good. Tried all three tools with the test account."},
+  {"from_catalog": "22222222-2222-2222-2222-222222222222", "version": "1.0", "owner_user_id": "lakeside-owner",
+   "status": "approved", "days_ago": 9, "reviewed_days_ago": 8,
+   "message": "Appointments for Lakeside Dental.", "note": "Approved."},
+  {"from_catalog": "55555555-5555-5555-5555-555555555555", "version": "1.0", "owner_user_id": "lakeside-owner",
+   "status": "approved", "days_ago": 7, "reviewed_days_ago": 6,
+   "message": "Specials and table bookings.", "note": "Approved."},
+  {"manifest_file": "quickfix_1.0.json", "owner_user_id": "quickfix-owner",
+   "status": "rejected", "days_ago": 5, "reviewed_days_ago": 4,
+   "message": "Please review our booking connector.",
+   "reason": "The API isn't on https and isn't on your domain, and book_plumber needs example phrases and a confirmation prompt."},
+  {"manifest_file": "pine_and_petal_1.0.json", "owner_user_id": "pinepetal-owner",
+   "status": "pending", "days_ago": 1,
+   "message": "First version: bouquet search and same-day orders. Test account details are in the private block."}
+]

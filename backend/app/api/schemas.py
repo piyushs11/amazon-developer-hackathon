@@ -57,6 +57,23 @@ class ServiceDetails(BaseModel):
     version: str | None = None
     mcp_url: str | None = None
     tools: list[ServiceTool] = []
+    # Display + voice data from the spec/manifest (description, city, phrases, scope labels,
+    # per-tool titles, confirmation prompts and answer templates). See ServiceSpec.profile.
+    profile: dict = {}
+    scopes: list[str] = []
+    published_at: datetime | None = None
+    connected_users: int = 0
+    # A newer approved version than the active bundle: the next publish regenerates it.
+    update_available: bool = False
+
+
+class ServiceSummary(BaseModel):
+    """One entry of GET /services (the catalog)."""
+    service_uuid: str
+    service_name: str
+    domain: str
+    published: bool
+    profile: dict = {}
 
 
 class MyService(BaseModel):
@@ -66,3 +83,21 @@ class MyService(BaseModel):
     status: Literal["connected", "active", "expired", "revoked"]
     mcp_url: str | None = None  # the same for every user; only set once the service is published
     last_called_at: datetime | None = None
+    connected_at: datetime | None = None
+    enabled: bool = True  # the user's on/off switch (PATCH /me/services/{uuid})
+    domain: str = ""
+    profile: dict = {}
+    update_available: bool = False
+
+
+class ServiceSwitch(BaseModel):
+    enabled: bool
+
+
+class Notification(BaseModel):
+    id: int
+    kind: str
+    text: str
+    link: str | None = None
+    read: bool
+    created_at: datetime

@@ -11,7 +11,7 @@ function AlexaExtra({ extra, session, onNeedLink }) {
         {items.slice(0, 5).map((m) => (
           <div className="item" key={m.id}>
             <div>{m.name}<span className="sub">{m.category}{m.sold_out ? ' · sold out today' : ''}</span></div>
-            <div className="price">{money(m.price_cents)}</div>
+            {m.price_cents != null && <div className="price">{money(m.price_cents)}</div>}
           </div>
         ))}
         {items.length > 5 && <div className="meta">and {items.length - 5} more</div>}
@@ -61,7 +61,7 @@ export default function ChatView({ session, showTrace = true, onNeedLink, hidden
             return (
               <div className="trace" key={it.id}>
                 <div className="hd">
-                  <Icon name="bolt" /><b>{it.tool}</b> · Demo Bistro · {it.ms} ms{' '}
+                  <Icon name="bolt" /><b>{it.tool}</b> · {it.service || 'Demo Bistro'} · {it.ms} ms{' '}
                   {it.isError ? <span className="err">is_error</span> : <span className="ok">ok</span>}
                 </div>
                 {it.lines.map((l) => <div className="ln" key={l}>{l}</div>)}

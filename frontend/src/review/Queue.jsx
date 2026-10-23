@@ -7,7 +7,7 @@ import { ChecksSummary, StatusLabel, isOpen, useReview } from './reviewState.jsx
 const FILTERS = [['open', 'Open'], ['pending', 'Pending review'], ['in_review', 'In review'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['all', 'All']];
 
 export default function Queue() {
-  const { subs, filter, setFilter } = useReview();
+  const { subs, filter, setFilter, loading, error } = useReview();
   const navigate = useNavigate();
 
   const count = (st) => subs.filter((s) => s.status === st).length;
@@ -26,6 +26,7 @@ export default function Queue() {
         <p className="lede">Connector submissions from website owners. Every one listed here passed the automated checks; your job is the part a machine can't do.</p>
       </div></div>
 
+      {error && <div className="banner err" style={{ marginBottom: 16 }}><div>{error}</div></div>}
       <div className="queue-sum">
         <div className="tile"><span className="n tnum">{counts.pending}</span><span className="l">Waiting for a reviewer</span></div>
         <div className="tile"><span className="n tnum">{counts.in_review}</span><span className="l">In review</span></div>
@@ -52,11 +53,11 @@ export default function Queue() {
                 <td data-l="Category">{s.category}</td>
                 <td data-l="Version" className="tnum">{s.version}</td>
                 <td data-l="Submitted">{fmtDateTime(s.submitted)}</td>
-                <td data-l="Automated checks"><ChecksSummary report={s.report} /></td>
+                <td data-l="Automated checks"><ChecksSummary checks={s.checks} /></td>
                 <td data-l="Status"><div><StatusLabel status={s.status} />{s.assignee && <div className="small muted">{s.assignee}</div>}</div></td>
               </tr>
             ))}
-            {!list.length && (
+            {!list.length && !loading && (
               <tr><td colSpan={7} className="muted" style={{ padding: '28px 16px', textAlign: 'center' }}>Nothing here.</td></tr>
             )}
           </tbody>

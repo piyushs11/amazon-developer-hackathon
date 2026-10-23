@@ -19,6 +19,7 @@ class ConnectionRow(BaseModel):
     status: Status
     connected_at: datetime
     last_called_at: datetime | None = None
+    enabled: bool = True  # the user's on/off switch; off = the gateway refuses calls
 
 
 class MappingStore(Protocol):
@@ -28,6 +29,9 @@ class MappingStore(Protocol):
     def get_connection(self, user_id: str, service_uuid: str) -> ConnectionRow | None: ...
     def list_for_user(self, user_id: str) -> list[ConnectionRow]: ...
     def touch(self, user_id: str, service_uuid: str) -> None: ...
+    def set_status(self, user_id: str, service_uuid: str, status: Status) -> bool: ...
+    def set_enabled(self, user_id: str, service_uuid: str, enabled: bool) -> bool: ...
+    def count_for_service(self, service_uuid: str) -> int: ...
 
 
 def _now() -> datetime:
@@ -45,6 +49,7 @@ class InMemoryMappingStore:
             self._rows[(user_id, service_uuid)] = ConnectionRow(
                 user_id=user_id, service_uuid=service_uuid, status=status,
                 connected_at=_now(), last_called_at=old.last_called_at if old else None,
+                enabled=old.enabled if old else True,
             )
 
     def get_connection(self, user_id: str, service_uuid: str) -> ConnectionRow | None:
@@ -62,6 +67,24 @@ class InMemoryMappingStore:
                     update={"last_called_at": _now()}
                 )
 
+    def _update(self, user_id: str, service_uuid: str, **fields) -> bool:
+        with self._lock:
+            row = self._rows.get((user_id, service_uuid))
+            if row is None:
+                return False
+            self._rows[(user_id, service_uuid)] = row.model_copy(update=fields)
+            return True
+
+    def set_status(self, user_id: str, service_uuid: str, status: Status) -> bool:
+        # Unlike upsert_connection, keeps connected_at (an expiry is not a new connection).
+        return self._update(user_id, service_uuid, status=status)
+
+    def set_enabled(self, user_id: str, service_uuid: str, enabled: bool) -> bool:
+        return self._update(user_id, service_uuid, enabled=enabled)
+
+    def count_for_service(self, service_uuid: str) -> int:
+        return sum(1 for r in self._rows.values() if r.service_uuid == service_uuid and r.status != "revoked")
+
 
 class PostgresMappingStore:
     SCHEMA = """
@@ -73,6 +96,7 @@ class PostgresMappingStore:
         last_called_at TIMESTAMP,
         PRIMARY KEY (user_id, service_uuid)
     );
+    ALTER TABLE user_service_mapping ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT true;
     """
 
     def __init__(self, database_url: str | None = None):
@@ -118,3 +142,27 @@ class PostgresMappingStore:
                 "WHERE user_id = %s AND service_uuid = %s",
                 (user_id, service_uuid),
             )
+
+    def set_status(self, user_id: str, service_uuid: str, status: Status) -> bool:
+        # Unlike upsert_connection, keeps connected_at (an expiry is not a new connection).
+        with self._connect() as conn:
+            return conn.execute(
+                "UPDATE user_service_mapping SET status = %s WHERE user_id = %s AND service_uuid = %s",
+                (status, user_id, service_uuid),
+            ).rowcount > 0
+
+    def set_enabled(self, user_id: str, service_uuid: str, enabled: bool) -> bool:
+        with self._connect() as conn:
+            return conn.execute(
+                "UPDATE user_service_mapping SET enabled = %s WHERE user_id = %s AND service_uuid = %s",
+                (enabled, user_id, service_uuid),
+            ).rowcount > 0
+
+    def count_for_service(self, service_uuid: str) -> int:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT count(*) AS n FROM user_service_mapping "
+                "WHERE service_uuid = %s AND status <> 'revoked'",
+                (service_uuid,),
+            ).fetchone()
+        return row["n"]

@@ -6,29 +6,25 @@ import { SideEffectTag } from '../components/ToolCard.jsx';
 import ToolCard from '../components/ToolCard.jsx';
 import { useToast } from '../components/Toast.jsx';
 import Icon from '../lib/Icon.jsx';
-import { checkReport } from '../data/checks.js';
-import { MANIFEST } from '../data/manifest.js';
-import { TOOLS } from '../data/tools.js';
+import { checksLabel, toolCards } from '../lib/portal.js';
 import OwnerShell from './OwnerShell.jsx';
-import { useOwner } from './ownerState.jsx';
+import { bump, useConnector, useOwner } from './ownerState.jsx';
 
 const STEPS = ['Upload manifest', 'Automated checks', 'Tool preview', 'Submit for review'];
+const MAX_PDF = 5 * 1024 * 1024;
 
 export default function Wizard() {
   const { step: stepParam } = useParams();
-  const { owner, wizard: w, resetWizard } = useOwner();
+  const { wizard: w, connectors } = useOwner();
   const requested = parseInt(stepParam, 10) || 1;
-
-  // After a submission the wizard starts over the next time it is opened.
-  useEffect(() => { if (w.submitted) resetWizard(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const target = w.target ? (connectors || []).find((c) => c.service_uuid === w.target) : null;
 
   // A step can only be reached once the earlier ones are done.
   let step = requested;
-  if (!w.submitted) {
-    if (step > 1 && !w.file) step = 1;
-    if (step > 2 && !w.done) step = 2;
-  }
+  if (step > 1 && !w.file) step = 1;
+  if (step > 2 && !w.report?.passed) step = 2;
   if (step < 1 || step > 4) step = 1;
+  if (w.submitted) step = 1;
   if (step !== requested) return <Navigate to={'/owner/submit/' + step} replace />;
 
   const nav = (
@@ -37,10 +33,11 @@ export default function Wizard() {
       {STEPS.map((label, i) => <StepNavButton key={label} n={i + 1} label={label} step={step} />)}
     </>
   );
+  const back = target ? { to: `/owner/${target.service_uuid}/overview`, label: target.service_name } : { to: '/owner', label: 'Your connectors' };
 
   return (
-    <OwnerShell row2={<Row2 back={{ to: '/owner/demobistro/overview', label: owner.name }} title="New submission" />} nav={nav}>
-      {step === 1 && <StepUpload />}
+    <OwnerShell row2={<Row2 back={back} title="New submission" />} nav={nav}>
+      {step === 1 && <StepUpload back={back} />}
       {step === 2 && <StepChecks />}
       {step === 3 && <StepTools />}
       {step === 4 && <StepSubmit />}
@@ -51,8 +48,9 @@ export default function Wizard() {
 function StepNavButton({ n, label, step }) {
   const { wizard: w } = useOwner();
   const navigate = useNavigate();
-  const reachable = (n === 2 && w.file) || (n === 3 && w.done) || (n === 4 && w.done);
-  const ok = (n === 1 && w.file) || (n === 2 && w.done) || (n === 3 && w.done && step > 3);
+  const passed = !!w.report?.passed;
+  const reachable = (n === 2 && w.file) || (n === 3 && passed) || (n === 4 && passed);
+  const ok = (n === 1 && w.file) || (n === 2 && passed) || (n === 3 && passed && step > 3);
   const disabled = n > step && !reachable;
   return (
     <button
@@ -72,8 +70,9 @@ function WizFoot({ left, children }) {
 }
 
 /* ------------------------------------------------------- 1. upload */
-function StepUpload() {
-  const { owner, wizard: w, patchWizard } = useOwner();
+function StepUpload({ back }) {
+  const { wizard: w, patchWizard } = useOwner();
+  const { connector } = useConnector(w.target);
   const toast = useToast();
   const navigate = useNavigate();
   const [over, setOver] = useState(false);
@@ -85,26 +84,27 @@ function StepUpload() {
     const r = new FileReader();
     r.onload = () => {
       try {
-        const j = JSON.parse(r.result);
-        if (!j.manifestVersion || !j.publisher || !j.openapi) throw new Error('shape');
-        patchWizard({ file: { name: f.name, size: f.size, manifest: j }, done: false });
+        patchWizard({ file: { name: f.name, size: f.size, manifest: JSON.parse(r.result) }, report: null });
       } catch {
-        toast("That file isn't a connector manifest. It needs manifestVersion, publisher, accountLinking and openapi.", 'err', 6000);
+        toast("That file isn't valid JSON.", 'err', 6000);
       }
     };
     r.readAsText(f);
   }
 
-  const useSample = (e) => {
+  // Start from the version that is in the catalog now (or the latest one sent).
+  const current = connector?.latest?.manifest;
+  const useCurrent = (e) => {
     e.stopPropagation();
-    patchWizard({ file: { name: 'alexa-connector.upload.json', size: 9668, manifest: MANIFEST }, done: false });
+    const text = JSON.stringify(current, null, 2);
+    patchWizard({ file: { name: `${connector.domain}-${connector.latest.version}.json`, size: text.length, manifest: JSON.parse(text) }, report: null });
   };
 
   return (
     <>
       <div className="page-head"><div>
         <h1>Upload the connector manifest</h1>
-        <p className="lede">One JSON file for {owner.domain}: your OpenAPI spec with x-alexa fields, account linking, and a private block with the client secret and a test account for the reviewer.</p>
+        <p className="lede">One JSON file: your OpenAPI spec with x-alexa fields (example phrases, confirmation prompts, what Alexa says), account linking, and a private block with a test account for the reviewer.</p>
       </div></div>
       <div className="stack">
         <div
@@ -113,24 +113,25 @@ function StepUpload() {
           tabIndex={0}
           role="button"
           aria-label="Choose the manifest file"
-          onClick={(e) => { if (e.target.id !== 'useSample') fileIn.current.click(); }}
+          onClick={(e) => { if (e.target.id !== 'useCurrent') fileIn.current.click(); }}
           onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileIn.current.click(); } }}
           onDragOver={(e) => { e.preventDefault(); setOver(true); }}
           onDragLeave={() => setOver(false)}
           onDrop={(e) => { e.preventDefault(); setOver(false); if (e.dataTransfer.files[0]) acceptFile(e.dataTransfer.files[0]); }}
         >
           <Icon name="upload" />
-          <div><b>Drop alexa-connector.upload.json here</b> or click to choose a file</div>
+          <div><b>Drop your manifest .json here</b> or click to choose a file</div>
           <div className="small muted" style={{ marginTop: 4 }}>JSON · up to 2 MB</div>
-          <div style={{ marginTop: 12 }}>
-            <button type="button" className="btn btn-secondary btn-sm" id="useSample" onClick={useSample}>Use the sample manifest</button>
-          </div>
+          {current && (
+            <div style={{ marginTop: 12 }}>
+              <button type="button" className="btn btn-secondary btn-sm" id="useCurrent" onClick={useCurrent}>Start from version {connector.latest.version}</button>
+            </div>
+          )}
         </div>
-        <input type="file" ref={fileIn} accept="application/json,.json" hidden
+        <input type="file" ref={fileIn} accept="application/json,.json" hidden data-testid="manifest-input"
           onChange={(e) => { if (e.target.files[0]) acceptFile(e.target.files[0]); e.target.value = ''; }} />
 
-        {/* always rendered, like the prototype's #parsed container, so the stack spacing matches */}
-        <div>{w.file && <ParsedManifest file={w.file} onRemove={() => patchWizard({ file: null, done: false })} />}</div>
+        <div>{w.file && <ParsedManifest file={w.file} onRemove={() => patchWizard({ file: null, report: null })} />}</div>
 
         <div className="field">
           <label>Notes for the reviewer (PDF, optional)</label>
@@ -148,10 +149,15 @@ function StepUpload() {
             )}
           </div>
           <input type="file" ref={pdfIn} accept="application/pdf,.pdf" hidden
-            onChange={(e) => { const f = e.target.files[0]; if (f) patchWizard({ pdf: { name: f.name, size: f.size } }); e.target.value = ''; }} />
+            onChange={(e) => {
+              const f = e.target.files[0];
+              if (f && f.size > MAX_PDF) toast('PDFs up to 5 MB.', 'err');
+              else if (f) patchWizard({ pdf: { name: f.name, size: f.size, file: f } });
+              e.target.value = '';
+            }} />
         </div>
       </div>
-      <WizFoot left={<Link className="btn btn-ghost" to="/owner/demobistro/overview">Cancel</Link>}>
+      <WizFoot left={<Link className="btn btn-ghost" to={back.to}>Cancel</Link>}>
         <button className="btn btn-primary" disabled={!w.file} onClick={() => navigate('/owner/submit/2')}>Run automated checks <Icon name="arrow-right" /></button>
       </WizFoot>
     </>
@@ -159,10 +165,10 @@ function StepUpload() {
 }
 
 function ParsedManifest({ file: f, onRemove }) {
-  const mf = f.manifest, pub = mf.publisher || {}, al = mf.accountLinking || {};
+  const mf = f.manifest || {}, pub = mf.publisher || {}, al = mf.accountLinking || {};
   const ops = [];
-  Object.keys((mf.openapi && mf.openapi.paths) || {}).forEach((p) =>
-    Object.keys(mf.openapi.paths[p]).forEach((mt) => ops.push(mf.openapi.paths[p][mt])));
+  Object.keys(mf.openapi?.paths || {}).forEach((p) =>
+    Object.keys(mf.openapi.paths[p] || {}).forEach((mt) => ops.push(mf.openapi.paths[p][mt])));
   return (
     <div className="card stack">
       <div className="row wrap between">
@@ -170,64 +176,80 @@ function ParsedManifest({ file: f, onRemove }) {
         <button className="btn btn-ghost btn-sm" onClick={onRemove}>Remove</button>
       </div>
       <dl className="kv">
-        <div><dt>Publisher</dt><dd>{pub.name}</dd></div>
-        <div><dt>Domain</dt><dd>{pub.domain}</dd></div>
-        <div><dt>Category</dt><dd>{(pub.category || '').replace(/_/g, ' ')}</dd></div>
-        <div><dt>Contact</dt><dd>{pub.contactEmail}</dd></div>
+        <div><dt>Publisher</dt><dd>{pub.name || <span className="muted">missing</span>}</dd></div>
+        <div><dt>Domain</dt><dd>{pub.domain || <span className="muted">missing</span>}</dd></div>
+        <div><dt>Category</dt><dd>{pub.category}{pub.city ? ' · ' + pub.city : ''}</dd></div>
+        <div><dt>Version</dt><dd className="tnum">{mf.openapi?.info?.version || <span className="muted">missing</span>}</dd></div>
         <div>
           <dt>Account linking</dt>
           <dd>{al.type === 'oauth2_authorization_code' ? 'OAuth 2.0 authorization code' : al.type}{al.pkce ? ' · PKCE' : ''}<div className="small muted">{(al.scopes || []).join(', ')}</div></dd>
         </div>
         <div>
           <dt>Private block</dt>
-          <dd><span className="status warn">Upload only</span><div className="small muted">clientSecret, testAccount, reviewNotes are stripped from the hosted copy and kept in the secrets store.</div></dd>
+          <dd><span className="status warn">Upload only</span><div className="small muted">clientSecret, testAccount and reviewNotes are never part of the hosted copy.</div></dd>
         </div>
       </dl>
       <div>
         <h3 style={{ marginBottom: 8 }}>{ops.length} endpoints → {ops.length} MCP tools</h3>
         <ul className="ep-list">
-          {ops.map((o) => (
-            <li key={o.operationId}>
-              <code>{o.operationId}</code><span className="muted">{o.summary || ''}</span>
+          {ops.map((o, i) => (
+            <li key={(o.operationId || '') + i}>
+              <code>{o.operationId || '(no operationId)'}</code><span className="muted">{o.summary || ''}</span>
               <SideEffectTag sideEffect={(o['x-alexa'] || {}).sideEffect || 'none'} />
             </li>
           ))}
         </ul>
       </div>
-      <div className="banner info"><Icon name="globe" /><div>Before running the checks, host this file without the private block at <b>{`https://${pub.domain}/.well-known/alexa-connector.json`}</b>. That is how we verify you own the domain and how users find you by website.</div></div>
     </div>
   );
 }
 
 /* ------------------------------------------------------- 2. checks */
 function StepChecks() {
-  const { owner, wizard: w, patchWizard } = useOwner();
+  const { wizard: w, patchWizard, runChecks } = useOwner();
   const navigate = useNavigate();
-  const [report] = useState(checkReport);
-  // If the checks already passed, show them as done instead of replaying the animation.
-  const [alreadyDone] = useState(w.done);
+  const toast = useToast();
+  const [run, setRun] = useState(w.report ? 0 : null);
+  const [animated, setAnimated] = useState(!!w.report);
 
+  // POST /api/owner/checks once per upload, then replay the results one by one.
+  useEffect(() => {
+    if (w.report) return;
+    let live = true;
+    runChecks(w.file.manifest)
+      .then((report) => { if (live) { patchWizard({ report }); setRun(1); } })
+      .catch((e) => { if (live) toast(e.message, 'err'); });
+    return () => { live = false; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const report = w.report;
+  const label = report && checksLabel(report);
   return (
     <>
       <div className="page-head"><div>
         <h1>Automated checks</h1>
-        <p className="lede">Eight checks run against the upload and the public copy on {owner.domain}. They must all pass before you can submit.</p>
+        <p className="lede">Eight checks run against the upload. Failures must be fixed before you can submit; warnings mark what only the local demo allows (http on mock hosts, demo domains).</p>
       </div></div>
       <div className="stack">
         <div>
-          {w.done ? (
+          {!report || !animated ? (
+            <div className="row wrap"><span className="count-pill" style={{ background: 'var(--fill-2)', color: 'var(--fg-2)' }}>Running checks...</span></div>
+          ) : report.passed ? (
             <>
-              <div className="row wrap"><span className="count-pill ok">8 of 8 checks passed</span></div>
+              <div className="row wrap"><span className={'count-pill ' + label.cls}>{label.text}</span></div>
               <div className="banner ok" style={{ marginTop: 12 }}><Icon name="check" /><div><b>Your connector is ready for submission.</b> Once submitted, we run the checks one last time and an Amazon reviewer takes a look.</div></div>
             </>
           ) : (
-            <div className="row wrap"><span className="count-pill" style={{ background: 'var(--fill-2)', color: 'var(--fg-2)' }}>Running checks...</span></div>
+            <>
+              <div className="row wrap"><span className="count-pill err">{label.text}</span></div>
+              <div className="banner err" style={{ marginTop: 12 }}><Icon name="alert" /><div><b>Fix the failed checks and upload the manifest again.</b></div></div>
+            </>
           )}
         </div>
-        <div><CheckRunner report={report} run={alreadyDone ? 0 : 1} onDone={() => patchWizard({ done: true })} /></div>
+        {report && <div><CheckRunner report={report} run={run || 0} onDone={() => setAnimated(true)} /></div>}
       </div>
       <WizFoot left={<Link className="btn btn-ghost" to="/owner/submit/1"><Icon name="arrow-left" />Previous</Link>}>
-        <button className="btn btn-primary" disabled={!w.done} onClick={() => navigate('/owner/submit/3')}>Preview tools <Icon name="arrow-right" /></button>
+        <button className="btn btn-primary" disabled={!report?.passed || !animated} onClick={() => navigate('/owner/submit/3')}>Preview tools <Icon name="arrow-right" /></button>
       </WizFoot>
     </>
   );
@@ -235,14 +257,16 @@ function StepChecks() {
 
 /* ------------------------------------------------------- 3. tools */
 function StepTools() {
+  const { wizard: w } = useOwner();
   const navigate = useNavigate();
+  const tools = toolCards(w.report, w.file.manifest);
   return (
     <>
       <div className="page-head"><div>
         <h1>Tools Alexa+ will get</h1>
         <p className="lede">Generated from your OpenAPI spec. Check the phrases people will say and what Alexa says back; this is also what the reviewer sees.</p>
       </div></div>
-      <div className="stack">{TOOLS.map((t, i) => <ToolCard key={t.name} tool={t} open={i === 1} />)}</div>
+      <div className="stack">{tools.map((t, i) => <ToolCard key={t.name} tool={t} open={i === 0} />)}</div>
       <WizFoot left={<Link className="btn btn-ghost" to="/owner/submit/2"><Icon name="arrow-left" />Previous</Link>}>
         <button className="btn btn-primary" onClick={() => navigate('/owner/submit/4')}>Continue to submit <Icon name="arrow-right" /></button>
       </WizFoot>
@@ -252,53 +276,69 @@ function StepTools() {
 
 /* ------------------------------------------------------- 4. submit */
 function StepSubmit() {
-  const { owner, wizard: w, patchWizard, submit } = useOwner();
+  const { wizard: w, patchWizard, submit, connectors } = useOwner();
   const toast = useToast();
   const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const pub = w.file.manifest.publisher || {};
+  const tools = w.report.tools || [];
+  const writes = tools.filter((t) => !t.read_only);
+  const label = checksLabel(w.report);
+  // Default to the file's version, or the next one if that version was already sent.
+  const taken = new Set(((connectors || []).find((c) => c.domain === pub.domain)?.submissions || []).map((s) => s.version));
+  const fileVersion = w.report.version || '1.0';
+  const suggested = taken.has(fileVersion) ? bump([...taken].sort().pop()) : fileVersion;
+  const version = w.version || suggested;
 
-  const onSubmit = () => {
-    const version = submit();
-    toast('Version ' + version + ' submitted for review', 'ok');
-    navigate('/owner/demobistro/overview');
+  const onSubmit = async () => {
+    setBusy(true);
+    try {
+      const row = await submit(version);
+      toast('Version ' + row.version + ' submitted for review', 'ok');
+      navigate(`/owner/${row.service_uuid}/overview`);
+    } catch (e) {
+      toast(e.message, 'err', 6000);
+      setBusy(false);
+    }
   };
 
   return (
     <>
       <div className="page-head"><div>
         <h1>Submit for review</h1>
-        <p className="lede">An Amazon reviewer checks the report and tool preview, then signs in with your test account and tries the tools. You'll get an email with the result.</p>
+        <p className="lede">An Amazon reviewer checks the report and tool preview, then tries the tools against your API with your test account. You'll get an email with the result.</p>
       </div></div>
       <div className="stack">
         <div className="card">
           <h2 style={{ marginBottom: 14 }}>What you're submitting</h2>
           <ul className="summary-list">
-            <li><Icon name="check" cls="s" /><span><b>alexa-connector.upload.json</b> for {owner.domain} · 3 endpoints · OAuth 2.0 with PKCE</span></li>
-            <li><Icon name="check" cls="s" /><span>Public copy hosted at <code>{`https://${owner.domain}/.well-known/alexa-connector.json`}</code> and matching, private block excluded</span></li>
-            <li><Icon name="check" cls="s" /><span>8 of 8 automated checks passed</span></li>
-            <li><Icon name="check" cls="s" /><span>place_order (write, payment) asks the user for a spoken yes before it runs</span></li>
+            <li><Icon name="check" cls="s" /><span><b>{w.file.name}</b> for {pub.domain} · {tools.length} endpoints · OAuth 2.0</span></li>
+            <li><Icon name="check" cls="s" /><span>Automated checks: {label.text}</span></li>
+            {writes.length > 0 && <li><Icon name="check" cls="s" /><span>{writes.map((t) => t.name).join(', ')} ask the user for a spoken yes before they run</span></li>}
             {w.pdf && <li><Icon name="check" cls="s" /><span>Reviewer notes attached: <b>{w.pdf.name}</b></span></li>}
           </ul>
         </div>
         <div className="card stack">
           <div className="field" style={{ maxWidth: 220 }}>
             <label htmlFor="ver">Version</label>
-            <input className="input" id="ver" value={w.version} onChange={(e) => patchWizard({ version: e.target.value })} />
+            <input className="input" id="ver" value={version} onChange={(e) => patchWizard({ version: e.target.value })} />
+            {taken.size > 0 && <div className="hint">Already sent: {[...taken].join(', ')}</div>}
           </div>
           <div className="field">
             <label htmlFor="msg">Version message</label>
             <div className="hint">What changed since the last submission. The reviewer sees this.</div>
-            <textarea className="textarea" id="msg" maxLength={300} placeholder="e.g. Fixed the test account password; added example phrases for search_menu"
+            <textarea className="textarea" id="msg" maxLength={300} placeholder="e.g. Added order tracking"
               value={w.message} onChange={(e) => patchWizard({ message: e.target.value })} />
             <div className="counter"><span>{w.message.length}</span>/300 characters</div>
           </div>
           <label className="check">
             <input type="checkbox" id="confirmTA" checked={w.confirm} onChange={(e) => patchWizard({ confirm: e.target.checked })} />
-            <span>The test account in the private block signs in at auth.{owner.domain} and will stay active until the review is done.</span>
+            <span>The test account in the private block signs in on our login page and will stay active until the review is done.</span>
           </label>
         </div>
       </div>
       <WizFoot left={<Link className="btn btn-ghost" to="/owner/submit/3"><Icon name="arrow-left" />Previous</Link>}>
-        <button className="btn btn-primary" disabled={!w.confirm} onClick={onSubmit}>Submit for review</button>
+        <button className="btn btn-primary" disabled={!w.confirm || busy} onClick={onSubmit}>{busy ? 'Submitting...' : 'Submit for review'}</button>
       </WizFoot>
     </>
   );

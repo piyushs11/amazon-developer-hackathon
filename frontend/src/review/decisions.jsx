@@ -19,23 +19,30 @@ export function ApproveDialog({ s }) {
   const toast = useToast();
   const [note, setNote] = useState('');
 
-  const confirm = () => {
-    approve(s.id, note.trim());
-    overlay.close();
-    toast(s.service + ' approved and added to the catalog', 'ok');
+  const [busy, setBusy] = useState(false);
+  const confirm = async () => {
+    setBusy(true);
+    try {
+      await approve(s.id, note.trim());
+      overlay.close();
+      toast(s.service + ' approved and added to the catalog', 'ok');
+    } catch (e) {
+      setBusy(false);
+      toast(e.message, 'err', 6000);
+    }
   };
 
   return (
     <>
       <h2>Approve {s.service} {s.version}?</h2>
-      <p className="lede">This lists {s.service} in the Alexa+ catalog so customers can add it by searching for {s.domain}. Nothing is generated now: the tool bundle is built and activated on the gateway the first time a user publishes the service, and every later user shares it.</p>
+      <p className="lede">This lists {s.service} in the Alexa+ catalog so customers can add it by searching for {s.domain}. Nothing is generated now: the tool bundle is built and activated on the gateway the next time a user publishes the service, and every later user shares it.</p>
       <div className="field">
         <label htmlFor="apNote">Note to the owner (optional)</label>
         <textarea className="textarea" id="apNote" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Anything they should know, for example phrases that worked especially well" />
       </div>
       <div className="actions">
         <button className="btn btn-ghost" onClick={overlay.close}>Cancel</button>
-        <button className="btn btn-primary" onClick={confirm}><Icon name="check" />Approve</button>
+        <button className="btn btn-primary" disabled={busy} onClick={confirm}><Icon name="check" />{busy ? 'Approving...' : 'Approve'}</button>
       </div>
     </>
   );
@@ -50,16 +57,20 @@ export function RejectDialog({ s }) {
   const [showError, setShowError] = useState(false);
   const reasonRef = useRef(null);
 
-  const confirm = () => {
+  const confirm = async () => {
     const text = reason.trim();
     if (text.length < MIN_REASON) {
       setShowError(true);
       reasonRef.current.focus();
       return;
     }
-    reject(s.id, category + ': ' + text);
-    overlay.close();
-    toast(s.service + ' ' + s.version + ' rejected. The owner has been emailed.');
+    try {
+      await reject(s.id, category + ': ' + text);
+      overlay.close();
+      toast(s.service + ' ' + s.version + ' rejected. The owner has been notified.');
+    } catch (e) {
+      toast(e.message, 'err', 6000);
+    }
   };
 
   return (

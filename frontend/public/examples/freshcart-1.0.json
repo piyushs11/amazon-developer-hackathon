@@ -1,0 +1,137 @@
+{
+  "manifestVersion": "1.0",
+  "publisher": {
+    "name": "FreshCart Grocery",
+    "domain": "freshcart.test",
+    "description": "Neighborhood grocery stores. Search products and prices, find a store near you, and build your cart for pickup.",
+    "tagline": "Groceries from your neighborhood store",
+    "category": "Food & grocery",
+    "city": "Columbus",
+    "brandColor": "#2e7d32",
+    "privacyPolicyUrl": "https://freshcart.test/privacy",
+    "termsUrl": "https://freshcart.test/terms",
+    "contactEmail": "partners@freshcart.example"
+  },
+  "accountLinking": {
+    "type": "oauth2_authorization_code",
+    "authorizationUrl": "http://localhost:9100/authorize",
+    "tokenUrl": "http://localhost:9100/token",
+    "clientId": "mcp-bridge",
+    "tokenAuthMethod": "client_secret_post",
+    "scopes": ["product.read", "cart.write"],
+    "scopeLabels": {
+      "product.read": "See products, prices and stores",
+      "cart.write": "Add items to your FreshCart cart"
+    },
+    "pkce": false
+  },
+  "private": {
+    "clientSecret": "stored-in-secrets-store",
+    "testAccount": { "username": "reviewer@freshcart.test", "password": "freshcart-test-account" },
+    "reviewNotes": "The test account starts with an empty cart. Store FC-0207 shows oat milk as out of stock."
+  },
+  "openapi": {
+    "openapi": "3.1.0",
+    "info": { "title": "FreshCart API", "version": "1.0", "description": "Groceries from your neighborhood store" },
+    "servers": [{ "url": "http://localhost:9300/grocery" }],
+    "paths": {
+      "/products": {
+        "get": {
+          "operationId": "search_products",
+          "summary": "Search products",
+          "description": "Search FreshCart products and prices by name or kind, such as milk or fruit. Add a store_id to check stock at that store.",
+          "parameters": [
+            { "name": "query", "in": "query", "required": true, "description": "What to search for, e.g. milk", "schema": { "type": "string" } },
+            { "name": "store_id", "in": "query", "required": false, "description": "Store id from find_stores, e.g. FC-0207, to check stock", "schema": { "type": "string" } }
+          ],
+          "x-alexa": {
+            "examplePhrases": ["does FreshCart have oat milk", "search FreshCart for coffee", "what fruit does FreshCart have"],
+            "sideEffect": "none",
+            "exampleArgs": { "query": "milk" },
+            "speakableResponse": "FreshCart has {count:products} matches, including {list:products.name}.",
+            "emptyResponse": "I couldn't find that at FreshCart."
+          }
+        }
+      },
+      "/products/{product_id}": {
+        "get": {
+          "operationId": "get_product",
+          "summary": "Product details",
+          "description": "Price, size and aisle of one product.",
+          "parameters": [
+            { "name": "product_id", "in": "path", "required": true, "description": "Product id from search_products, e.g. FC1008", "schema": { "type": "string" } }
+          ],
+          "x-alexa": {
+            "examplePhrases": ["how much is FreshCart product FC1008", "where do I find FC1008 at FreshCart"],
+            "sideEffect": "none",
+            "exampleArgs": { "product_id": "FC1008" },
+            "speakableResponse": "{name} by {brand}, {size}, is ${price}. You'll find it in {aisle}.",
+            "errorResponses": { "404": "FreshCart doesn't have that product." }
+          }
+        }
+      },
+      "/stores": {
+        "get": {
+          "operationId": "find_stores",
+          "summary": "Find stores",
+          "description": "FreshCart stores nearest to a ZIP code.",
+          "parameters": [
+            { "name": "zip", "in": "query", "required": true, "description": "5-digit ZIP code, e.g. 43215", "schema": { "type": "string" } }
+          ],
+          "x-alexa": {
+            "examplePhrases": ["find a FreshCart near 43215", "which FreshCart stores are near zip 43215"],
+            "sideEffect": "none",
+            "exampleArgs": { "zip": "43215" },
+            "speakableResponse": "The nearest FreshCart stores are {list:stores.name}.",
+            "emptyResponse": "There's no FreshCart store near there."
+          }
+        }
+      },
+      "/cart/items": {
+        "post": {
+          "operationId": "add_to_cart",
+          "summary": "Add to cart",
+          "description": "Add a product to your FreshCart cart for pickup.",
+          "requestBody": {
+            "required": true,
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CartItem" } } }
+          },
+          "x-alexa": {
+            "examplePhrases": ["add 2 bananas to my FreshCart cart", "put ground coffee in my FreshCart cart"],
+            "sideEffect": "write",
+            "requiresConfirmation": true,
+            "confirmationPrompt": "Should I add {quantity} × {item} to your FreshCart cart?",
+            "exampleArgs": { "item": "Bananas", "quantity": 2 },
+            "speakableResponse": "Added {quantity} × {item}. Your cart has {cart_count} items, ${cart_total} so far.",
+            "errorResponses": { "404": "FreshCart doesn't sell that.", "422": "You can add 1 to 20 at a time." }
+          }
+        }
+      },
+      "/cart": {
+        "get": {
+          "operationId": "view_cart",
+          "summary": "Your cart",
+          "description": "What's in your FreshCart cart and the total.",
+          "x-alexa": {
+            "examplePhrases": ["what's in my FreshCart cart", "how much is my FreshCart cart"],
+            "sideEffect": "none",
+            "speakableResponse": "Your cart has {item_count} items: {list:items.name}. Total ${total}.",
+            "emptyResponse": "Your FreshCart cart is empty."
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "CartItem": {
+          "type": "object",
+          "properties": {
+            "item": { "type": "string", "description": "Product name, e.g. Bananas" },
+            "quantity": { "type": "integer", "description": "How many, 1 to 20" }
+          },
+          "required": ["item", "quantity"]
+        }
+      }
+    }
+  }
+}

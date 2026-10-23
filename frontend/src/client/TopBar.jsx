@@ -9,7 +9,7 @@ export default function TopBar({ title, onBack, right }) {
   const { backend, me } = useClient();
   const navigate = useNavigate();
   const overlay = useOverlay();
-  const needsAttention = backend.myServices(me.id).some((s) => s.status === 'expired');
+  const needsAttention = backend.myServices(me.id).some((s) => s.status === 'expired') || (backend.unread?.(me.id) || 0) > 0;
 
   return (
     <div className="app-top">

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import NotBuilt from '../components/NotBuilt.jsx';
 import Switch from '../components/Switch.jsx';
 import { useToast } from '../components/Toast.jsx';
 import Icon from '../lib/Icon.jsx';
@@ -9,7 +10,8 @@ import { useClient } from './clientState.jsx';
 import { DB } from './mockBackend.js';
 import ToolsPanel from './ToolsPanel.jsx';
 
-// The Alexa+ simulator. Ask mode talks to Demo Bistro through the gateway; Tools mode is the
+// The Alexa+ simulator. Ask mode understands requests for any of the user's live services
+// (POST /assistant/ask, which calls the gateway); Tools mode is the
 // plain MCP client (pick a tool, fill its input_schema, call it).
 // opts: { send } asks a question on open, { listen } starts the mic, { mode: 'tools', uuid }.
 export default function Simulator({ opts }) {
@@ -63,7 +65,7 @@ export default function Simulator({ opts }) {
   };
   const toServices = () => {
     closeLayer();
-    navigate(backend.link(me.id, DB) ? '/client/services' : `/client/services/${DB}`);
+    navigate(backend.live || backend.link(me.id, DB) ? '/client/services' : `/client/services/${DB}`);
   };
   const submit = (e) => {
     e.preventDefault();
@@ -77,7 +79,7 @@ export default function Simulator({ opts }) {
       <div className="inner">
         <div className="app-top" style={{ position: 'relative' }}>
           <button type="button" className="btn-icon btn" aria-label="Close" onClick={closeLayer}><Icon name="chevron-down" /></button>
-          <div className="title">Alexa<span className="sub">Alexa+ · {me.name}</span></div>
+          <div className="title">Alexa<span className="sub">Alexa+ · {me.name}{backend.live && <> <NotBuilt id="llm_routing" label="No LLM" /></>}</span></div>
           <button type="button" ref={moreRef} className="btn-icon btn" aria-label="Options" onClick={() => setMenuOpen((o) => !o)}><Icon name="more" /></button>
           {menuOpen && (
             <div className="kebab-menu" ref={menuRef}>

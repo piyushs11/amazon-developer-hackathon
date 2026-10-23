@@ -1,6 +1,9 @@
 // Demo Bistro connector manifest and gateway constants (from the prototype).
 // One MCP URL per service, the same for every user: {GATEWAY_URL}/mcp/{service_uuid}
-export const GATEWAY_URL = 'https://mcpbridge.dev';
+// The real gateway's address unless the app runs on the in-browser mock (VITE_MOCK=1).
+import { GATEWAY_URL as LIVE_GATEWAY_URL, MOCK } from '../lib/config.js';
+
+export const GATEWAY_URL = MOCK ? 'https://mcpbridge.dev' : LIVE_GATEWAY_URL;
 export const SERVICE_UUID = '11111111-1111-1111-1111-111111111111';
 export const mcpUrl = (uuid) => GATEWAY_URL + '/mcp/' + uuid;
 

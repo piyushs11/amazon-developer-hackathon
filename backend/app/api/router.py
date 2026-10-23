@@ -18,12 +18,15 @@ from backend.app.api.jobs import get_jobs
 from backend.app.api.schemas import (
     SERVICE_UUID_PATTERN,
     MyService,
+    Notification,
     OAuthStartResponse,
     PublishRequest,
     PublishStarted,
     PublishStatus,
     ResolveRequest,
     ServiceDetails,
+    ServiceSummary,
+    ServiceSwitch,
 )
 from backend.app.auth.identity import get_current_user
 from backend.app.auth.oauth import (
@@ -58,6 +61,16 @@ async def resolve_service(
     except Exception:
         log.exception("resolve-service failed")
         raise HTTPException(503, "could not search services, please try again") from None
+
+
+@router.get("/services", response_model=list[ServiceSummary])
+async def list_services(_user_id: str = Depends(get_current_user)) -> list[ServiceSummary]:
+    """The catalog: every approved service users can find and connect."""
+    try:
+        return await asyncio.to_thread(catalog.list_catalog)
+    except Exception:
+        log.exception("services list failed")
+        raise HTTPException(503, "could not load the catalog, please try again") from None
 
 
 @router.get("/services/{service_uuid}", response_model=ServiceDetails)
@@ -145,12 +158,18 @@ def _my_services(user_id: str) -> list[MyService]:
             status = row.status  # expired / revoked: the user has to reconnect
         else:
             status = "active" if live else "connected"
+        details = catalog.service_details(row.service_uuid)
         services.append(MyService(
             service_uuid=row.service_uuid,
             service_name=info.service_name if info else row.service_uuid,
             status=status,
             mcp_url=mcp_url(row.service_uuid) if live else None,
             last_called_at=row.last_called_at,
+            connected_at=row.connected_at,
+            enabled=row.enabled,
+            domain=details.domain if details else "",
+            profile=details.profile if details else {},
+            update_available=bool(details and details.update_available),
         ))
     return services
 
@@ -188,4 +207,45 @@ async def disconnect(service_uuid: str, user_id: str = Depends(get_current_user)
         raise HTTPException(503, "could not disconnect, please try again") from None
     if not found:
         raise HTTPException(404, "not connected")
+    return Response(status_code=204)
+
+
+@router.patch("/me/services/{service_uuid}", response_model=MyService)
+async def switch_service(
+    service_uuid: str, body: ServiceSwitch, user_id: str = Depends(get_current_user)
+) -> MyService:
+    """Turn a connected service on or off for this user. Off = the gateway refuses its calls."""
+    from backend.app.auth.factory import get_mapping
+
+    if not _SERVICE_UUID.match(service_uuid):
+        raise HTTPException(422, "service_uuid: letters, digits and '-' only")
+    found = await asyncio.to_thread(get_mapping().set_enabled, user_id, service_uuid, body.enabled)
+    if not found:
+        raise HTTPException(404, "not connected")
+    mine = await asyncio.to_thread(_my_services, user_id)
+    return next(s for s in mine if s.service_uuid == service_uuid)
+
+
+# ---- Notifications (the bell) ----
+
+@router.get("/me/notifications", response_model=list[Notification])
+async def my_notifications(user_id: str = Depends(get_current_user)) -> list[Notification]:
+    from backend.app.auth.settings import get_settings
+
+    if get_settings().registry != "postgres":
+        return []
+    from backend.app.db import portal
+
+    rows = await asyncio.to_thread(portal.list_notifications, user_id)
+    return [Notification.model_validate(r.model_dump()) for r in rows]
+
+
+@router.post("/me/notifications/read", status_code=204)
+async def read_notifications(user_id: str = Depends(get_current_user)) -> Response:
+    from backend.app.auth.settings import get_settings
+
+    if get_settings().registry == "postgres":
+        from backend.app.db import portal
+
+        await asyncio.to_thread(portal.mark_notifications_read, user_id)
     return Response(status_code=204)

@@ -10,7 +10,7 @@ from backend.app.db.registry import ServiceRow
 
 class NameLocation(BaseModel):
     name: str
-    city: str | None = None  # accepted but unused: C1 has no city field yet
+    city: str | None = None  # matched against the service profile's city when given
 
 
 class ServiceResolverInput(BaseModel):

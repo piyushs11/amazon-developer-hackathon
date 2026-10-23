@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 from backend.app.auth.factory import get_identity, get_service_directory
 from backend.app.auth.identity import bearer_token
 from backend.app.auth.settings import get_settings, rewrite
-from backend.app.gateway import mcp
+from backend.app.gateway import mcp, safety
 from backend.app.gateway.bundles import get_registry
 from runtime import loader
 
@@ -70,6 +70,10 @@ async def mcp_endpoint(service_uuid: str, request: Request) -> Response:
     rpc_id, method, params = msg["id"], msg["method"], msg.get("params") or {}
     if not isinstance(method, str) or not isinstance(params, dict):
         return _rpc_error(rpc_id, mcp.INVALID_REQUEST, "invalid request")
+    # Per-user limit on tool calls (the expensive part: they hit the business's API).
+    if method == "tools/call" and not safety.tool_calls.allow(user_id):
+        return _rpc_error(rpc_id, mcp.RATE_LIMITED,
+                          f"too many calls: at most {safety.tool_calls.per_minute} per minute", 429)
 
     # 4. Load the bundle (cached by uuid + version) and run the method.
     try:
@@ -86,6 +90,8 @@ async def mcp_endpoint(service_uuid: str, request: Request) -> Response:
     # http://localhost:9000; UPSTREAM_REWRITES turns that into http://demo-api:9000.
     base_url = rewrite(active.base_url, get_settings().upstream_rewrites)
     req = mcp.Request(user_id, service_uuid, service_name, bundle, base_url)
+    if method == "tools/call":
+        req.upstream_problem = await asyncio.to_thread(safety.upstream_problem, base_url)
     try:
         result = await mcp.dispatch(req, method, params)
     except mcp.RpcError as exc:
@@ -94,6 +100,34 @@ async def mcp_endpoint(service_uuid: str, request: Request) -> Response:
         log.error("rpc_failed request_id=%s error=%s", req.request_id, type(exc).__name__)
         return _rpc_error(rpc_id, mcp.INTERNAL_ERROR, "internal error")
     return JSONResponse({"jsonrpc": "2.0", "id": rpc_id, "result": result})
+
+
+async def invoke(user_id: str, service_uuid: str, tool: str, arguments: dict) -> dict:
+    """tools/call as this user without going over HTTP (Ask mode). The same path as POST
+    /mcp/{uuid}: rate limit, active bundle, allow-list, connection checks, the user's token.
+    Returns {text, data, is_error}."""
+    def error(text: str) -> dict:
+        return {"text": text, "data": None, "is_error": True}
+
+    if not safety.tool_calls.allow(user_id):
+        return error(f"Too many requests: at most {safety.tool_calls.per_minute} per minute.")
+    active = await asyncio.to_thread(get_registry().get_active_bundle, service_uuid)
+    if active is None:
+        return error("This service isn't published yet.")
+    try:
+        bundle = await asyncio.to_thread(loader.load, service_uuid, active.version, active.bundle_path)
+    except loader.BundleLoadError:
+        return error("This service is temporarily unavailable.")
+    service_name = await asyncio.to_thread(_display_name, service_uuid, bundle)
+    base_url = rewrite(active.base_url, get_settings().upstream_rewrites)
+    req = mcp.Request(user_id, service_uuid, service_name, bundle, base_url)
+    req.upstream_problem = await asyncio.to_thread(safety.upstream_problem, base_url)
+    try:
+        result = await mcp.dispatch(req, "tools/call", {"name": tool, "arguments": arguments})
+    except mcp.RpcError as exc:
+        return error(exc.message)
+    text = "\n".join(c.get("text", "") for c in result.get("content", []) if c.get("type") == "text")
+    return {"text": text, "data": result.get("structuredContent"), "is_error": bool(result.get("isError"))}
 
 
 @router.api_route("/mcp/{service_uuid}", methods=["GET", "DELETE"])

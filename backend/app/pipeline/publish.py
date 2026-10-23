@@ -5,8 +5,10 @@
                          generate_service(uuid)        writes bundles/{uuid}/{version}/ (1, 2, 3...)
         "deploying"   -> Deployer.deploy(...)          bundle must load, then becomes active
         "registering" -> Registrar.register(...)       Alexa+ (mocked)
-    already published by another user:
+    already published by another user, spec unchanged:
         "skipped"                                      same bundle, same mcp_url for everyone
+    spec changed since the active bundle was built (a reviewer approved a new version):
+        generated again as the next version; the old one stays active until the new one loads
     then always:
         "done" -> PublishResult(status="done", mcp_url="{GATEWAY_URL}/mcp/{uuid}")
     any failure:
@@ -75,6 +77,9 @@ async def publish(
     async def fail(step: str, code: str, message: str) -> PublishResult:
         log.warning("publish_failed service_uuid=%s user_id=%s step=%s code=%s",
                     service_uuid, user_id, step, code)
+        await _notify(user_id, "publish_failed",
+                      f"Publishing {await asyncio.to_thread(_service_name, service_uuid)} failed: {message[:120]}",
+                      service_uuid)
         await progress("failed")
         return PublishResult(status="failed",
                              error=StepError(step=step, code=code, message=message[:MAX_MESSAGE]))
@@ -90,7 +95,9 @@ async def publish(
 
     async with _lock(service_uuid):
         active = await asyncio.to_thread(registry.get_active_bundle, service_uuid)
-        if active is not None:
+        spec_changed = getattr(registry, "spec_changed", None)
+        stale = active is not None and spec_changed is not None and             await asyncio.to_thread(spec_changed, service_uuid)
+        if active is not None and not stale:
             await progress("skipped")
             await progress("done")
             return PublishResult(status="done", mcp_url=url, skipped=True, version=active.version)
@@ -151,8 +158,16 @@ async def publish(
             return await fail("register", "REGISTER_FAILED", "Alexa+ registration failed")
 
     log.info("published service_uuid=%s version=%s by user_id=%s", service_uuid, version, user_id)
+    await _notify(user_id, "publish_done",
+                  f"{name} version {version} is live on Alexa+.", service_uuid)
     await progress("done")
     return PublishResult(status="done", mcp_url=deployed.mcp_url, version=version)
+
+
+async def _notify(user_id: str, kind: str, text: str, service_uuid: str) -> None:
+    from backend.app.notifications import notify
+
+    await asyncio.to_thread(notify, user_id, kind, text, f"/client/services/{service_uuid}")
 
 
 def _service_name(service_uuid: str) -> str:

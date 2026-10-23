@@ -1,0 +1,170 @@
+{
+  "manifestVersion": "1.0",
+  "publisher": {
+    "name": "Pine & Petal",
+    "domain": "pinepetal.test",
+    "description": "Neighborhood florist. Browse bouquets by occasion and send flowers the same day.",
+    "tagline": "Fresh bouquets, delivered today",
+    "category": "Shopping",
+    "city": "Oak Park",
+    "brandColor": "#a3456b",
+    "privacyPolicyUrl": "https://pinepetal.test/privacy",
+    "termsUrl": "https://pinepetal.test/terms",
+    "contactEmail": "hello@pinepetal.example"
+  },
+  "accountLinking": {
+    "type": "oauth2_authorization_code",
+    "authorizationUrl": "http://localhost:9100/authorize",
+    "tokenUrl": "http://localhost:9100/token",
+    "clientId": "mcp-bridge",
+    "tokenAuthMethod": "client_secret_post",
+    "scopes": [
+      "shop"
+    ],
+    "scopeLabels": {
+      "shop": "See bouquets and send flowers for you"
+    },
+    "pkce": false
+  },
+  "private": {
+    "clientSecret": "stored-in-secrets-store",
+    "testAccount": {
+      "username": "reviewer@pinepetal.test",
+      "password": "petals-test-account"
+    },
+    "reviewNotes": "The test account can order any bouquet; nothing is charged."
+  },
+  "openapi": {
+    "openapi": "3.1.0",
+    "info": {
+      "title": "Pine & Petal API",
+      "version": "1.1",
+      "description": "Fresh bouquets, delivered today"
+    },
+    "servers": [
+      {
+        "url": "http://localhost:9300/florist"
+      }
+    ],
+    "paths": {
+      "/bouquets": {
+        "get": {
+          "operationId": "search_bouquets",
+          "summary": "Find bouquets",
+          "description": "Find bouquets by occasion or flower, such as birthday or roses.",
+          "parameters": [
+            {
+              "name": "occasion",
+              "in": "query",
+              "required": false,
+              "description": "Occasion or flower, e.g. birthday, roses",
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "x-alexa": {
+            "examplePhrases": [
+              "what bouquets does Pine & Petal have for a birthday",
+              "show me roses from Pine & Petal",
+              "flowers for an anniversary"
+            ],
+            "sideEffect": "none",
+            "exampleArgs": {
+              "occasion": "birthday"
+            },
+            "speakableResponse": "Pine & Petal has {count:bouquets} bouquets, including {list:bouquets.name}.",
+            "emptyResponse": "Pine & Petal has nothing for that occasion right now."
+          }
+        }
+      },
+      "/orders": {
+        "post": {
+          "operationId": "order_bouquet",
+          "summary": "Send a bouquet",
+          "description": "Order a bouquet for same-day delivery to someone in your address book.",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NewOrder"
+                }
+              }
+            }
+          },
+          "x-alexa": {
+            "examplePhrases": [
+              "send Classic Red Roses to Mom from Pine & Petal",
+              "order a bouquet of Spring Tulips for Sam"
+            ],
+            "sideEffect": "payment",
+            "requiresConfirmation": true,
+            "exampleArgs": {
+              "bouquet": "Spring Tulips",
+              "recipient": "Mom"
+            },
+            "confirmationPrompt": "Should I send {bouquet} to {recipient} from Pine & Petal?",
+            "speakableResponse": "Done. Order {order_id}: {bouquet} for {recipient} is on its way today.",
+            "errorResponses": {
+              "404": "Pine & Petal doesn't have that bouquet."
+            }
+          }
+        }
+      },
+      "/orders/{order_id}": {
+        "get": {
+          "operationId": "flower_order_status",
+          "summary": "Track a flower order",
+          "description": "Get the delivery status of one of your Pine & Petal orders.",
+          "parameters": [
+            {
+              "name": "order_id",
+              "in": "path",
+              "required": true,
+              "description": "Order id, e.g. PP100",
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "x-alexa": {
+            "examplePhrases": [
+              "where is my Pine & Petal order PP100",
+              "track flower order PP100"
+            ],
+            "sideEffect": "none",
+            "exampleArgs": {
+              "order_id": "PP100"
+            },
+            "speakableResponse": "Order {order_id} ({bouquet} for {recipient}) is {status}.",
+            "errorResponses": {
+              "404": "I couldn't find that order on your Pine & Petal account."
+            }
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "NewOrder": {
+          "type": "object",
+          "properties": {
+            "bouquet": {
+              "type": "string",
+              "description": "Bouquet name, e.g. Spring Tulips"
+            },
+            "recipient": {
+              "type": "string",
+              "description": "Who it's for, e.g. Mom"
+            }
+          },
+          "required": [
+            "bouquet",
+            "recipient"
+          ]
+        }
+      }
+    }
+  }
+}

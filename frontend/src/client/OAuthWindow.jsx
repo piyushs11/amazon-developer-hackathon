@@ -1,14 +1,142 @@
 import { useEffect, useRef, useState } from 'react';
 import { useOverlay } from '../components/Overlay.jsx';
 import { useToast } from '../components/Toast.jsx';
+import { MOCK } from '../lib/config.js';
 import Icon from '../lib/Icon.jsx';
 import { sleep } from '../lib/utils.js';
+import { OAUTH_CHANNEL } from './ConnectDone.jsx';
 import { useClient } from './clientState.jsx';
 import { ConnectErrorSheet } from './sheets.jsx';
 
-// GET /oauth/start opens the service's own login page; /oauth/callback brings the user back.
-// This simulates that window: sign in, allow access, then return to MCP Bridge.
 export default function OAuthWindow({ uuid }) {
+  return MOCK ? <MockOAuthWindow uuid={uuid} /> : <RealOAuthWindow uuid={uuid} />;
+}
+
+// GET /oauth/start gives the service's own sign-in page. It opens in a popup; /oauth/callback
+// stores the token and sends the popup to /connect/done, which tells this window over a
+// BroadcastChannel and closes. If the popup is blocked, the user can retry or use this tab.
+function RealOAuthWindow({ uuid }) {
+  const { backend, me, closeLayer, openPublish } = useClient();
+  const overlay = useOverlay();
+  const toast = useToast();
+  const s = backend.catalog[uuid];
+  const [phase, setPhase] = useState('opening'); // opening | waiting | blocked | finishing
+  const popup = useRef(null);
+  const started = useRef(false);
+  const done = useRef(false);
+  const wasExpired = useRef(backend.link(me.id, uuid)?.status === 'expired');
+
+  const fail = (why) => {
+    if (done.current) return;
+    done.current = true;
+    try { popup.current?.close(); } catch { /* already gone */ }
+    closeLayer();
+    overlay.open(<ConnectErrorSheet uuid={uuid} reason={why} />, { sheet: true });
+  };
+
+  const finish = async (status) => {
+    if (done.current) return;
+    if (status !== 'ok') { fail(s.name + " didn't allow access."); return; }
+    done.current = true;
+    try { popup.current?.close(); } catch { /* already gone */ }
+    setPhase('finishing');
+    try {
+      await Promise.all([backend.refresh(me.id), backend.loadService(uuid)]);
+    } catch (e) {
+      toast(e.message, 'err');
+    }
+    if (wasExpired.current) {
+      closeLayer();
+      toast(s.name + ' reconnected. Its new token is stored.', 'ok');
+    } else {
+      openPublish(uuid);
+    }
+  };
+
+  // Has to run right after the user's click, or the browser blocks the popup.
+  const open = async () => {
+    const win = window.open('', 'mcpb-oauth', 'popup,width=480,height=680');
+    if (!win) { setPhase('blocked'); return; }
+    popup.current = win;
+    setPhase('waiting');
+    try {
+      win.location.href = await backend.startOAuth(me.id, uuid);
+    } catch (e) {
+      fail(e.message);
+    }
+  };
+
+  // No popup: sign in in this tab. /connect/done brings the user back to Services afterwards.
+  const useThisTab = async () => {
+    try {
+      window.location.href = await backend.startOAuth(me.id, uuid);
+    } catch (e) {
+      fail(e.message);
+    }
+  };
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    open();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    let channel = null;
+    try {
+      channel = new BroadcastChannel(OAUTH_CHANNEL);
+      channel.onmessage = (e) => finish(e.data?.status);
+    } catch { /* no BroadcastChannel: the closed-window check below still ends the wait */ }
+    // The user closed the popup without finishing. Give a message sent just before a moment to arrive.
+    let closedAt = null;
+    const timer = setInterval(() => {
+      if (!popup.current?.closed || done.current) return;
+      closedAt = closedAt || Date.now();
+      if (Date.now() - closedAt > 1500) fail('You closed the ' + s.name + ' window before finishing.');
+    }, 400);
+    return () => { clearInterval(timer); channel?.close(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return (
+    <div className="full">
+      <div className="inner">
+        <div className="app-top">
+          <button type="button" className="btn-icon btn" aria-label="Close" onClick={() => fail('You cancelled before signing in to ' + s.name + '.')}><Icon name="x" /></button>
+          <div className="title">Connect {s.name}</div>
+          <span style={{ width: 38 }}></span>
+        </div>
+        <div className="app-body">
+          <div className="not-avail">
+            <div className="ring" style={{ background: 'var(--blue-tint)', color: 'var(--blue)' }}><Icon name={phase === 'blocked' ? 'alert' : 'lock'} /></div>
+            {phase === 'blocked' ? (
+              <>
+                <h2>Your browser blocked the sign-in window</h2>
+                <p className="muted">Open it again, or sign in to {s.name} in this tab.</p>
+                <div className="stack-s" style={{ marginTop: 10, width: '100%' }}>
+                  <button type="button" className="btn btn-primary btn-lg btn-block" onClick={open}>Open {s.domain || s.name} sign-in</button>
+                  <button type="button" className="btn btn-secondary btn-lg btn-block" onClick={useThisTab}>Use this tab instead</button>
+                </div>
+              </>
+            ) : phase === 'finishing' ? (
+              <>
+                <h2>Returning to MCP Bridge...</h2>
+                <p className="muted">Account connected.</p>
+              </>
+            ) : (
+              <>
+                <h2>Sign in to {s.name}</h2>
+                <p className="muted">Finish in the {s.domain || s.name} window. We never see your password.</p>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// The prototype's simulated sign-in window (VITE_MOCK=1): sign in, allow access, return.
+function MockOAuthWindow({ uuid }) {
   const { backend, me, closeLayer, openPublish } = useClient();
   const overlay = useOverlay();
   const toast = useToast();

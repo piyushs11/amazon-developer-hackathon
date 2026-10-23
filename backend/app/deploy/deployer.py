@@ -42,11 +42,13 @@ class GatewayDeployer:
         if current and current.version == req.version and current.bundle_path == req.bundle_path:
             return DeployResult(mcp_url=url, version=req.version, status="deployed")  # idempotent
 
+        # Record which spec this bundle was built from, so publish() can tell when it's stale.
+        spec_hash_of = getattr(registry, "current_spec_hash", None)
+        spec_hash = await asyncio.to_thread(spec_hash_of, req.service_uuid) if spec_hash_of else ""
         try:
-            # C5 carries no spec hash; publish() can record one in the registry itself.
             await asyncio.to_thread(
                 registry.set_active_version,
-                req.service_uuid, req.version, req.bundle_path, "",
+                req.service_uuid, req.version, req.bundle_path, spec_hash,
             )
         except LookupError as exc:
             return DeployResult(mcp_url=url, version=req.version, status="failed", error=str(exc))

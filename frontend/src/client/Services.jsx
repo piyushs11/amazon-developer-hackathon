@@ -10,16 +10,34 @@ import { lastCalledText } from './bits.jsx';
 import TopBar from './TopBar.jsx';
 import { ManageSheet } from './sheets.jsx';
 
-const TRY = [['https://www.demobistro.test/menu', 'demobistro.test'], ['Lakeside', 'Lakeside'], ['pizzapalace.com', 'pizzapalace.com']];
+const MOCK_TRY = [['https://www.demobistro.test/menu', 'demobistro.test'], ['Lakeside', 'Lakeside'], ['pizzapalace.com', 'pizzapalace.com']];
+
+// Search examples from the catalog: a website, a name several services share ("Which one?"),
+// and a name with a city.
+function tryChips(list) {
+  if (!list?.length) return [];
+  const chips = [['https://www.' + list[0].domain, list[0].domain]];
+  const firstWords = list.map((s) => s.service_name.split(/\s+/)[0]);
+  const shared = firstWords.find((w, i) => firstWords.indexOf(w) !== i);
+  if (shared) chips.push([shared, shared]);
+  const withCity = list.find((s) => s.profile?.city && s.service_name.split(/\s+/)[0] === shared) || list.find((s) => s.profile?.city);
+  if (withCity) {
+    const q = withCity.service_name.split(/\s+/)[0] + ' in ' + withCity.profile.city;
+    chips.push([q, q]);
+  }
+  return chips;
+}
 
 // S1 dashboard plus the S2a search box.
 export default function Services() {
   const { backend, me, query, setQuery } = useClient();
   const navigate = useNavigate();
+  const toast = useToast();
   const location = useLocation();
   const [input, setInput] = useState(query);
   const inputRef = useRef(null);
   const list = backend.myServices(me.id);
+  const chips = backend.catalogList ? tryChips(backend.catalogList()) : MOCK_TRY;
 
   useEffect(() => {
     if (!location.state?.focusSearch) return undefined;
@@ -27,8 +45,14 @@ export default function Services() {
     return () => clearTimeout(t);
   }, [location.state]);
 
-  const resolve = (raw) => {
-    const res = backend.resolve(raw);
+  const resolve = async (raw) => {
+    let res;
+    try {
+      res = await backend.resolve(raw);
+    } catch (e) {
+      toast(e.message, 'err');
+      return;
+    }
     if (!res) return;
     setQuery(res.query);
     if (res.result.status === 'resolved') navigate(`/client/services/${res.result.uuid}`);
@@ -41,11 +65,11 @@ export default function Services() {
       <div className="app-body">
         <form className="input-search" role="search" onSubmit={(e) => { e.preventDefault(); resolve(input); }}>
           <Icon name="search" />
-          <input ref={inputRef} className="input" id="q" placeholder="Website, like demobistro.test, or a name" value={input} onChange={(e) => setInput(e.target.value)}
+          <input ref={inputRef} className="input" id="q" placeholder={'Website, like ' + (chips[0]?.[1] || 'example.com') + ', or a name'} value={input} onChange={(e) => setInput(e.target.value)}
             autoComplete="off" autoCapitalize="none" spellCheck="false" aria-label="Find a service by website or name" />
         </form>
-        <div className="row wrap" style={{ padding: '10px 0 2px', fontSize: 13, color: 'var(--fg-2)' }}>
-          Try {TRY.map(([q, label]) => (
+        <div className="row wrap" style={{ padding: '10px 0 2px', fontSize: 13, color: 'var(--fg-2)' }} hidden={!chips.length}>
+          Try {chips.map(([q, label]) => (
             <button type="button" className="chip" key={q} style={{ height: 30 }} onClick={() => { setInput(q); resolve(q); }}>{label}</button>
           ))}
         </div>
@@ -80,11 +104,16 @@ function ServiceCard({ s }) {
 
   const action = s.status === 'expired' ? <><Icon name="refresh" />Reconnect</>
     : s.status === 'connected' ? 'Publish'
-      : s.status === 'failed' ? <><Icon name="refresh" />Retry publish</> : null;
+      : s.status === 'failed' ? <><Icon name="refresh" />Retry publish</>
+        : s.update ? <><Icon name="refresh" />Update</> : null;
 
-  const toggle = (on) => {
-    backend.setEnabled(me.id, s.uuid, on);
-    toast(s.name + (on ? ' is on' : ' is off'), '', 1800);
+  const toggle = async (on) => {
+    try {
+      await backend.setEnabled(me.id, s.uuid, on);
+      toast(s.name + (on ? ' is on' : ' is off'), '', 1800);
+    } catch (e) {
+      toast(e.message, 'err');
+    }
   };
 
   return (

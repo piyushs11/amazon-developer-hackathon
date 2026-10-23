@@ -6,7 +6,8 @@ services:
       POSTGRES_USER: mcpbridge
       POSTGRES_PASSWORD: mcpbridge
       POSTGRES_DB: mcpbridge
-    ports: ["5432:5432"]
+    # Host port is configurable: a Postgres installed on the host often already uses 5432.
+    ports: ["${POSTGRES_PORT:-5432}:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]  # registry, connections, encrypted tokens survive rebuilds
     restart: unless-stopped
     healthcheck:  # lets `depends_on: condition: service_healthy` and `up --wait` wait for it
@@ -40,6 +41,12 @@ services:
     ports: ["9000:9000"]
     restart: unless-stopped
 
+  lakeside:             # fake APIs for Lakeside Dental, Lakeside Grill and Pine & Petal
+    build: ./mock-services
+    environment: { APP: lakeside, PORT: "9300" }
+    ports: ["9300:9300"]
+    restart: unless-stopped
+
   oauth:                # fake OAuth provider
     build: ./mock-services
     environment: { APP: oauth, PORT: "9100" }
@@ -69,10 +76,10 @@ services:
       # `us.` profile, so keep this a US region. Credentials come from the EC2 instance role.
       AWS_REGION: ${AWS_REGION:-us-east-1}
       AWS_DEFAULT_REGION: ${AWS_REGION:-us-east-1}
-      # The registry/spec say localhost:9000/9100; inside Docker the mocks have service names.
+      # The registry/spec say localhost:9000/9100/9300; inside Docker the mocks have service names.
       # The gateway applies this to the tools' API calls (base URL is read at call time, not
       # baked into bundles), to verification, and to the OAuth token calls.
-      UPSTREAM_REWRITES: http://localhost:9000=http://demo-api:9000,http://localhost:9100=http://oauth:9100
+      UPSTREAM_REWRITES: http://localhost:9000=http://demo-api:9000,http://localhost:9300=http://lakeside:9300,http://localhost:9100=http://oauth:9100
     ports: ["8000:8000"]
     # MODE=local keeps bundles in /app/generated: without a volume a rebuild (deploy.sh) would
     # delete them while the registry still points at them.
@@ -82,6 +89,7 @@ services:
       seed: { condition: service_completed_successfully }
       redis: { condition: service_started }
       demo-api: { condition: service_started }
+      lakeside: { condition: service_started }
       oauth: { condition: service_started }
     restart: unless-stopped
 

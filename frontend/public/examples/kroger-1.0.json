@@ -1,0 +1,220 @@
+{
+  "manifestVersion": "1.0",
+  "publisher": {
+    "name": "Kroger",
+    "domain": "kroger.com",
+    "description": "Search Kroger products and prices at your store, find nearby Kroger family stores, and add items to your Kroger cart.",
+    "tagline": "Groceries from your Kroger store",
+    "category": "Shopping",
+    "city": "Cincinnati",
+    "brandColor": "#0c4a8c",
+    "privacyPolicyUrl": "https://www.kroger.com/i/policies/privacy-policy",
+    "termsUrl": "https://www.kroger.com/i/terms",
+    "contactEmail": "REPLACE_WITH_CONTACT_EMAIL@example.com"
+  },
+  "accountLinking": {
+    "type": "oauth2_authorization_code",
+    "authorizationUrl": "https://api.kroger.com/v1/connect/oauth2/authorize",
+    "tokenUrl": "https://api.kroger.com/v1/connect/oauth2/token",
+    "clientId": "REPLACE_WITH_KROGER_CLIENT_ID",
+    "tokenAuthMethod": "client_secret_basic",
+    "scopes": ["product.compact", "cart.basic:write", "profile.compact"],
+    "scopeLabels": {
+      "product.compact": "See products and prices",
+      "cart.basic:write": "Add items to your Kroger cart",
+      "profile.compact": "See your Kroger profile ID"
+    },
+    "pkce": false
+  },
+  "private": {
+    "clientSecret": "REPLACE_WITH_KROGER_CLIENT_SECRET",
+    "testAccount": {
+      "username": "REPLACE_WITH_KROGER_TEST_ACCOUNT_EMAIL",
+      "password": "REPLACE_WITH_KROGER_TEST_ACCOUNT_PASSWORD"
+    },
+    "reviewNotes": "Uses only Kroger's Public APIs (Products, Locations, Cart, Identity). Register http://localhost:8000/oauth/callback as a redirect URI on the Kroger developer app. Product prices and stock need a locationId from search_locations."
+  },
+  "openapi": {
+    "openapi": "3.1.0",
+    "info": {
+      "title": "Kroger Public API",
+      "version": "1.0",
+      "description": "Groceries from your Kroger store"
+    },
+    "servers": [{ "url": "https://api.kroger.com/v1" }],
+    "paths": {
+      "/products": {
+        "get": {
+          "operationId": "search_products",
+          "summary": "Search products",
+          "description": "Search Kroger products by keyword. Add a store's locationId to get its prices, stock and aisle.",
+          "parameters": [
+            { "name": "filter.term", "in": "query", "required": true, "description": "What to search for, e.g. milk", "schema": { "type": "string" } },
+            { "name": "filter.locationId", "in": "query", "required": false, "description": "Store locationId from search_locations, for prices and stock", "schema": { "type": "string" } },
+            { "name": "filter.brand", "in": "query", "required": false, "description": "Brand name, e.g. Kroger", "schema": { "type": "string" } },
+            { "name": "filter.fulfillment", "in": "query", "required": false, "description": "ais (in store), csp (curbside pickup), dth (delivery), sth (ship to home)", "schema": { "type": "string", "enum": ["ais", "csp", "dth", "sth"] } },
+            { "name": "filter.limit", "in": "query", "required": false, "description": "How many results, 1 to 50", "schema": { "type": "integer" } }
+          ],
+          "x-alexa": {
+            "examplePhrases": ["search Kroger for milk", "does Kroger have oat milk", "find bananas at Kroger"],
+            "sideEffect": "none",
+            "exampleArgs": { "filter.term": "milk", "filter.limit": 5 },
+            "speakableResponse": "I found {count:data} products at Kroger, including {list:data.description}.",
+            "emptyResponse": "I couldn't find that at Kroger.",
+            "errorResponses": { "400": "Kroger didn't understand that search." }
+          }
+        }
+      },
+      "/products/{productId}": {
+        "get": {
+          "operationId": "get_product",
+          "summary": "Product details",
+          "description": "Details of one Kroger product by its productId (or UPC). Add a locationId for that store's price and stock.",
+          "parameters": [
+            { "name": "productId", "in": "path", "required": true, "description": "13-digit productId or UPC from search_products, e.g. 0001111041700", "schema": { "type": "string" } },
+            { "name": "filter.locationId", "in": "query", "required": false, "description": "Store locationId, for price and stock", "schema": { "type": "string" } }
+          ],
+          "x-alexa": {
+            "examplePhrases": ["tell me about Kroger product 0001111041700", "what is product 0001111041700 at Kroger"],
+            "sideEffect": "none",
+            "exampleArgs": { "productId": "0001111041700" },
+            "speakableResponse": "That's {data.description} by {data.brand}.",
+            "errorResponses": { "404": "Kroger doesn't have that product." }
+          }
+        }
+      },
+      "/locations": {
+        "get": {
+          "operationId": "search_locations",
+          "summary": "Find stores",
+          "description": "Find Kroger family stores near a ZIP code.",
+          "parameters": [
+            { "name": "filter.zipCode.near", "in": "query", "required": true, "description": "5-digit ZIP code, e.g. 45202", "schema": { "type": "string" } },
+            { "name": "filter.radiusInMiles", "in": "query", "required": false, "description": "Search radius in miles, 1 to 100", "schema": { "type": "integer" } },
+            { "name": "filter.limit", "in": "query", "required": false, "description": "How many stores, 1 to 200", "schema": { "type": "integer" } },
+            { "name": "filter.chain", "in": "query", "required": false, "description": "Chain name, e.g. KROGER or RALPHS", "schema": { "type": "string" } }
+          ],
+          "x-alexa": {
+            "examplePhrases": ["find a Kroger near 45202", "which Kroger stores are near zip 45202"],
+            "sideEffect": "none",
+            "exampleArgs": { "filter.zipCode.near": "45202", "filter.limit": 3 },
+            "speakableResponse": "The nearest stores are {list:data.name}.",
+            "emptyResponse": "I couldn't find a Kroger store near there."
+          }
+        }
+      },
+      "/locations/{locationId}": {
+        "get": {
+          "operationId": "get_location",
+          "summary": "Store details",
+          "description": "Address, phone and hours of one store.",
+          "parameters": [
+            { "name": "locationId", "in": "path", "required": true, "description": "8-character locationId from search_locations, e.g. 01400943", "schema": { "type": "string" } }
+          ],
+          "x-alexa": {
+            "examplePhrases": ["where is Kroger store 01400943", "what is the address of Kroger store 01400943"],
+            "sideEffect": "none",
+            "exampleArgs": { "locationId": "01400943" },
+            "speakableResponse": "{data.name} is at {data.address.addressLine1}, {data.address.city}.",
+            "errorResponses": { "404": "I couldn't find that Kroger store." }
+          }
+        }
+      },
+      "/chains": {
+        "get": {
+          "operationId": "list_chains",
+          "summary": "Kroger chains",
+          "description": "The store chains owned by The Kroger Co.",
+          "x-alexa": {
+            "examplePhrases": ["which chains does Kroger own", "list the Kroger family of stores"],
+            "sideEffect": "none",
+            "speakableResponse": "Kroger runs {count:data} chains, including {list:data.name}."
+          }
+        }
+      },
+      "/departments": {
+        "get": {
+          "operationId": "list_departments",
+          "summary": "Store departments",
+          "description": "The departments a Kroger store can have, such as pharmacy or deli.",
+          "x-alexa": {
+            "examplePhrases": ["what departments do Kroger stores have", "list Kroger departments"],
+            "sideEffect": "none",
+            "speakableResponse": "Kroger stores have {count:data} departments, including {list:data.name}."
+          }
+        }
+      },
+      "/cart/add": {
+        "put": {
+          "operationId": "add_to_cart",
+          "summary": "Add to cart",
+          "description": "Add items to your Kroger cart by UPC, for pickup or delivery.",
+          "requestBody": {
+            "required": true,
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CartAdd" } } }
+          },
+          "x-alexa": {
+            "examplePhrases": ["add milk to my Kroger cart", "put two bananas in my Kroger cart"],
+            "sideEffect": "write",
+            "requiresConfirmation": true,
+            "confirmationPrompt": "Should I add these items to your Kroger cart?",
+            "exampleArgs": { "items": [{ "upc": "0001111041700", "quantity": 1, "modality": "PICKUP" }] },
+            "speakableResponse": "Done. They're in your Kroger cart.",
+            "errorResponses": { "401": "Please reconnect Kroger so I can use your cart." }
+          }
+        }
+      },
+      "/identity/profile": {
+        "get": {
+          "operationId": "get_profile",
+          "summary": "Your Kroger profile",
+          "description": "Confirms which Kroger account is connected.",
+          "x-alexa": {
+            "examplePhrases": ["which Kroger account am I using", "am I signed in to Kroger"],
+            "sideEffect": "none",
+            "speakableResponse": "You're signed in to your Kroger account."
+          }
+        }
+      }
+    },
+    "components": {
+      "securitySchemes": {
+        "krogerOAuth": {
+          "type": "oauth2",
+          "flows": {
+            "authorizationCode": {
+              "authorizationUrl": "https://api.kroger.com/v1/connect/oauth2/authorize",
+              "tokenUrl": "https://api.kroger.com/v1/connect/oauth2/token",
+              "scopes": {
+                "product.compact": "See products and prices",
+                "cart.basic:write": "Add items to your Kroger cart",
+                "profile.compact": "See your Kroger profile ID"
+              }
+            }
+          }
+        }
+      },
+      "schemas": {
+        "CartAdd": {
+          "type": "object",
+          "properties": {
+            "items": {
+              "type": "array",
+              "description": "Items to add: [{\"upc\": \"0001111041700\", \"quantity\": 1, \"modality\": \"PICKUP\"}]. modality is PICKUP or DELIVERY.",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "upc": { "type": "string" },
+                  "quantity": { "type": "integer" },
+                  "modality": { "type": "string", "enum": ["PICKUP", "DELIVERY"] }
+                },
+                "required": ["upc", "quantity"]
+              }
+            }
+          },
+          "required": ["items"]
+        }
+      }
+    }
+  }
+}

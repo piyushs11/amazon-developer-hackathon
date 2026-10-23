@@ -27,11 +27,12 @@ export default function ClientApp() {
 }
 
 function ClientShell() {
-  const { me, layer } = useClient();
+  const { me, layer, restoring } = useClient();
   const { pathname } = useLocation();
   useBodyClass('client-page app-bg' + (layer ? ' has-full' : ''));
   useEffect(() => { window.scrollTo(0, 0); }, [pathname, me]);
 
+  if (restoring) return null;
   if (!me) return <Login />;
 
   return (

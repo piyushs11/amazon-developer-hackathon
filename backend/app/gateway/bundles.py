@@ -49,6 +49,12 @@ class InMemoryRegistry:
                 version=version, bundle_path=bundle_path, base_url=self._base_urls[service_uuid]
             )
 
+    def current_spec_hash(self, service_uuid: str) -> str:
+        return ""  # the fixtures never change at runtime
+
+    def spec_changed(self, service_uuid: str) -> bool:
+        return False
+
 
 class PostgresRegistry:
     """Dev 1's repository with a short cache: get_active_bundle runs on every MCP request."""
@@ -74,6 +80,21 @@ class PostgresRegistry:
 
         set_active_version(service_uuid, version, bundle_path, spec_hash)
         self._cache.pop(service_uuid, None)
+
+    def current_spec_hash(self, service_uuid: str) -> str:
+        from backend.app.db.registry import current_spec_hash
+
+        return current_spec_hash(service_uuid) or ""
+
+    def spec_changed(self, service_uuid: str) -> bool:
+        """True when the registry's spec no longer matches the active bundle (e.g. a reviewer
+        approved a new version). A bundle deployed before hashes were recorded counts as current."""
+        from backend.app.db.registry import get_service
+
+        row = get_service(service_uuid)
+        if row is None or not row.active_version or not row.spec_hash:
+            return False
+        return row.spec_hash != self.current_spec_hash(service_uuid)
 
 
 _registry = None

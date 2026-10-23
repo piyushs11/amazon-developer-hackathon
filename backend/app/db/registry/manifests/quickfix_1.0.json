@@ -1,0 +1,71 @@
+{
+  "manifestVersion": "1.0",
+  "publisher": {
+    "name": "QuickFix Plumbing",
+    "domain": "quickfix.example.com",
+    "description": "Book a plumber.",
+    "category": "Home services",
+    "city": "Chicago",
+    "privacyPolicyUrl": "http://quickfix.example.com/privacy",
+    "termsUrl": "http://quickfix.example.com/terms",
+    "contactEmail": "info@quickfix.example"
+  },
+  "accountLinking": {
+    "type": "oauth2_authorization_code",
+    "authorizationUrl": "http://auth.quickfix.example.com/authorize",
+    "tokenUrl": "http://auth.quickfix.example.com/token",
+    "clientId": "mcp-bridge",
+    "scopes": [
+      "jobs"
+    ],
+    "pkce": false
+  },
+  "private": {
+    "clientSecret": "stored-in-secrets-store",
+    "testAccount": {
+      "username": "review@quickfix.example.com",
+      "password": "quickfix-test"
+    }
+  },
+  "openapi": {
+    "openapi": "3.1.0",
+    "info": {
+      "title": "QuickFix API",
+      "version": "1.0"
+    },
+    "servers": [
+      {
+        "url": "http://api.quickfixplumbing.com"
+      }
+    ],
+    "paths": {
+      "/jobs": {
+        "post": {
+          "operationId": "book_plumber",
+          "summary": "Book a plumber",
+          "description": "Book a plumber visit.",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "address": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "address"
+                  ]
+                }
+              }
+            }
+          },
+          "x-alexa": {
+            "sideEffect": "payment"
+          }
+        }
+      }
+    }
+  }
+}

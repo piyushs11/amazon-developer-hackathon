@@ -9,7 +9,7 @@
 
 	# API + MCP gateway. The frontend's own routes (/, /client/*, /owner/*, /review/*,
 	# /connect/done) never start with these, so one domain serves both (no CORS needed).
-	@api path /health /auth/* /oauth/* /publish /publish/* /me/* /mcp/* /services/* /resolve-service /docs /openapi.json
+	@api path /health /auth/* /oauth/* /publish /publish/* /me /me/* /mcp/* /services /services/* /resolve-service /assistant/* /api/* /features /docs /openapi.json
 	handle @api {
 		reverse_proxy app:8000
 	}

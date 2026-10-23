@@ -1,34 +1,1228 @@
 {
   "POST /auth/demo-login": {
-    "request": {"username": "alice"},
-    "response": {"user_id": "alice", "user_token": "<jwt>"}
+    "request": {
+      "username": "alice"
+    },
+    "response": {
+      "user_id": "alice",
+      "display_name": "Alice",
+      "email": "alice@example.com",
+      "color": "#126dff",
+      "role": "user",
+      "user_token": "<jwt>"
+    },
+    "notes": "Any username works; new ones are added as role=user. Seeded: alice, bob (user), demobistro-owner, lakeside-owner, pinepetal-owner, quickfix-owner (owner), reviewer."
   },
   "GET /oauth/start": {
     "request": "?service_uuid=11111111-1111-1111-1111-111111111111  (Authorization: Bearer <user_token>)",
-    "response": {"auth_url": "http://localhost:9100/authorize?client_id=mcp-bridge&redirect_uri=...&state=<signed>"},
-    "errors": {"404": "unknown service", "400": "service does not use OAuth", "422": "bad service_uuid"}
+    "response": {
+      "auth_url": "http://localhost:9100/authorize?client_id=mcp-bridge&redirect_uri=...&state=<signed>"
+    },
+    "errors": {
+      "404": "unknown service",
+      "400": "service does not use OAuth",
+      "422": "bad service_uuid"
+    }
   },
   "GET /oauth/callback": {
     "request": "?code=<code>&state=<signed>",
     "response": "302 -> {FRONTEND_URL}/connect/done?status=ok  (or status=error)"
   },
   "POST /publish": {
-    "request": {"service_uuid": "11111111-1111-1111-1111-111111111111"},
-    "response": {"job_id": "9f1c0f6e2a7b4d0e8c3d5a1b7e2f4c60"}
+    "request": {
+      "service_uuid": "11111111-1111-1111-1111-111111111111"
+    },
+    "response": {
+      "job_id": "9f1c0f6e2a7b4d0e8c3d5a1b7e2f4c60"
+    }
   },
   "GET /publish/{job_id}": {
-    "running": {"status": "running", "stage": "generating", "mcp_url": null, "skipped": false, "version": null, "error": null},
-    "done": {"status": "done", "stage": "done", "mcp_url": "https://<domain>/mcp/11111111-1111-1111-1111-111111111111", "skipped": false, "version": "1", "error": null},
-    "skipped": {"status": "done", "stage": "done", "mcp_url": "https://<domain>/mcp/11111111-1111-1111-1111-111111111111", "skipped": true, "version": "1", "error": null},
-    "failed": {"status": "failed", "stage": "failed", "mcp_url": null, "skipped": false, "version": null, "error": {"step": "connect", "code": "NOT_CONNECTED", "message": "Connect the service in MCP Bridge before publishing it."}},
-    "stages": ["queued", "generating", "deploying", "registering", "skipped", "done", "failed"]
+    "running": {
+      "status": "running",
+      "stage": "generating",
+      "mcp_url": null,
+      "skipped": false,
+      "version": null,
+      "error": null
+    },
+    "done": {
+      "status": "done",
+      "stage": "done",
+      "mcp_url": "https://<domain>/mcp/11111111-1111-1111-1111-111111111111",
+      "skipped": false,
+      "version": "1",
+      "error": null
+    },
+    "skipped": {
+      "status": "done",
+      "stage": "done",
+      "mcp_url": "https://<domain>/mcp/11111111-1111-1111-1111-111111111111",
+      "skipped": true,
+      "version": "1",
+      "error": null
+    },
+    "failed": {
+      "status": "failed",
+      "stage": "failed",
+      "mcp_url": null,
+      "skipped": false,
+      "version": null,
+      "error": {
+        "step": "connect",
+        "code": "NOT_CONNECTED",
+        "message": "Connect the service in MCP Bridge before publishing it."
+      }
+    },
+    "stages": [
+      "queued",
+      "generating",
+      "deploying",
+      "registering",
+      "skipped",
+      "done",
+      "failed"
+    ]
   },
   "GET /me/services": {
+    "request": "(Authorization: Bearer <user_token>)",
     "response": [
-      {"service_uuid": "11111111-1111-1111-1111-111111111111", "service_name": "Demo Bistro", "status": "active", "mcp_url": "https://<domain>/mcp/11111111-1111-1111-1111-111111111111", "last_called_at": "2026-10-21T09:30:00"},
-      {"service_uuid": "22222222-2222-2222-2222-222222222222", "service_name": "Lakeside Dental", "status": "connected", "mcp_url": null, "last_called_at": null}
-    ],
-    "status values": "connected (signed in, not published) | active (live) | expired | revoked (reconnect)"
+      {
+        "service_uuid": "71d3f493-e290-56c0-818a-832db9a336ca",
+        "service_name": "Pine & Petal",
+        "status": "active",
+        "mcp_url": "http://localhost:8000/mcp/71d3f493-e290-56c0-818a-832db9a336ca",
+        "last_called_at": "2026-10-23T03:55:16.327431",
+        "connected_at": "2026-10-23T03:53:02.592771",
+        "enabled": true,
+        "domain": "pinepetal.test",
+        "profile": {
+          "city": "Oak Park",
+          "color": "#a3456b",
+          "glyph": "bag",
+          "tools": {
+            "order_bouquet": "{...}",
+            "search_bouquets": "{...}",
+            "flower_order_status": "{...}"
+          },
+          "phrases": [
+            "send Classic Red Roses to Mom from Pine & Petal",
+            "what bouquets does Pine & Petal have for a birthday",
+            "..."
+          ],
+          "tagline": "Fresh bouquets, delivered today",
+          "category": "Shopping",
+          "initials": "PP",
+          "auth_host": "localhost",
+          "terms_url": "https://pinepetal.test/terms",
+          "description": "Neighborhood florist. Browse bouquets by occasion and send flowers the same day.",
+          "privacy_url": "https://pinepetal.test/privacy",
+          "scope_labels": {
+            "shop": "See bouquets and send flowers for you"
+          }
+        },
+        "update_available": false
+      },
+      {
+        "service_uuid": "11111111-1111-1111-1111-111111111111",
+        "service_name": "Demo Bistro",
+        "status": "active",
+        "mcp_url": "http://localhost:8000/mcp/11111111-1111-1111-1111-111111111111",
+        "last_called_at": "2026-10-23T03:59:09.881001",
+        "connected_at": "2026-10-23T03:59:03.804812",
+        "enabled": true,
+        "domain": "demobistro.test",
+        "profile": {
+          "city": "Chicago",
+          "color": "#b23a1e",
+          "glyph": "utensils",
+          "tools": {
+            "place_order": "{...}",
+            "search_menu": "{...}",
+            "get_order_status": "{...}"
+          },
+          "phrases": [
+            "what pasta does Demo Bistro have",
+            "what is the status of order A1042",
+            "..."
+          ],
+          "tagline": "Search the menu, order and track it",
+          "category": "Food & drink",
+          "initials": "DB",
+          "auth_host": "auth.demobistro.test",
+          "terms_url": "https://demobistro.test/terms",
+          "description": "Neighborhood bistro with pickup and delivery. Search the menu, place orders and check on them.",
+          "privacy_url": "https://demobistro.test/privacy",
+          "scope_labels": {
+            "read": "See the menu and your orders",
+            "order": "Place orders for you"
+          }
+        },
+        "update_available": false
+      },
+      "..."
+    ]
   },
-  "POST /resolve-service": "not built yet"
+  "POST /resolve-service": {
+    "request": [
+      {
+        "query": "https://www.demobistro.test/menu"
+      },
+      {
+        "query": "Lakeside"
+      },
+      {
+        "query": "Lakeside in Chicago"
+      },
+      {
+        "input_type": "name_location",
+        "name_location": {
+          "name": "Lakeside",
+          "city": "Evanston"
+        }
+      }
+    ],
+    "response": [
+      {
+        "status": "resolved",
+        "service": {
+          "service_uuid": "11111111-1111-1111-1111-111111111111",
+          "service_name": "Demo Bistro",
+          "domain": "demobistro.test"
+        },
+        "candidates": null
+      },
+      {
+        "status": "ambiguous",
+        "service": null,
+        "candidates": [
+          {
+            "service_uuid": "22222222-2222-2222-2222-222222222222",
+            "service_name": "Lakeside Dental",
+            "domain": "lakesidedental.test"
+          },
+          {
+            "service_uuid": "55555555-5555-5555-5555-555555555555",
+            "service_name": "Lakeside Grill",
+            "domain": "lakesidegrill.test"
+          }
+        ]
+      }
+    ],
+    "notes": "status: resolved (service) | ambiguous (candidates) | not_found. `query` takes what the user typed: a URL/domain, a name, or 'name in city'."
+  },
+  "GET /auth/demo-users": {
+    "request": "?role=user|owner|reviewer (no auth)",
+    "response": [
+      {
+        "user_id": "alice",
+        "display_name": "Alice",
+        "email": "alice@example.com",
+        "color": "#126dff",
+        "role": "user"
+      },
+      {
+        "user_id": "bob",
+        "display_name": "Bob",
+        "email": "bob@example.com",
+        "color": "#6b4ee6",
+        "role": "user"
+      },
+      "..."
+    ]
+  },
+  "GET /me": {
+    "request": "(Authorization: Bearer <user_token>)",
+    "response": {
+      "user_id": "alice",
+      "display_name": "Alice",
+      "email": "alice@example.com",
+      "color": "#126dff",
+      "role": "user"
+    }
+  },
+  "GET /services": {
+    "request": "(Authorization: Bearer <user_token>)",
+    "response": [
+      {
+        "service_uuid": "11111111-1111-1111-1111-111111111111",
+        "service_name": "Demo Bistro",
+        "domain": "demobistro.test",
+        "published": true,
+        "profile": {
+          "city": "Chicago",
+          "color": "#b23a1e",
+          "glyph": "utensils",
+          "tools": {
+            "place_order": "{...}",
+            "search_menu": "{...}",
+            "get_order_status": "{...}"
+          },
+          "phrases": [
+            "what pasta does Demo Bistro have",
+            "what is the status of order A1042",
+            "..."
+          ],
+          "tagline": "Search the menu, order and track it",
+          "category": "Food & drink",
+          "initials": "DB",
+          "auth_host": "auth.demobistro.test",
+          "terms_url": "https://demobistro.test/terms",
+          "description": "Neighborhood bistro with pickup and delivery. Search the menu, place orders and check on them.",
+          "privacy_url": "https://demobistro.test/privacy",
+          "scope_labels": {
+            "read": "See the menu and your orders",
+            "order": "Place orders for you"
+          }
+        }
+      },
+      {
+        "service_uuid": "22222222-2222-2222-2222-222222222222",
+        "service_name": "Lakeside Dental",
+        "domain": "lakesidedental.test",
+        "published": true,
+        "profile": {
+          "city": "Evanston",
+          "color": "#1f6f8b",
+          "glyph": "calendar",
+          "tools": {
+            "next_available": "{...}",
+            "my_appointments": "{...}",
+            "book_appointment": "{...}",
+            "cancel_appointment": "{...}"
+          },
+          "phrases": [
+            "when is the next cleaning at Lakeside Dental",
+            "book slot_0914 at Lakeside Dental",
+            "..."
+          ],
+          "tagline": "Book and manage appointments",
+          "category": "Health & wellness",
+          "initials": "LD",
+          "auth_host": "patients.lakesidedental.test",
+          "terms_url": "https://lakesidedental.test/terms",
+          "description": "Family dental practice. Find open slots, book and cancel appointments.",
+          "privacy_url": "https://lakesidedental.test/privacy",
+          "scope_labels": {
+            "appointments": "See and book your appointments"
+          }
+        }
+      },
+      "..."
+    ],
+    "notes": "The catalog: services with a profile (test fixtures are left out)."
+  },
+  "GET /services/{service_uuid}": {
+    "request": "(Authorization: Bearer <user_token>)",
+    "response": {
+      "service_uuid": "11111111-1111-1111-1111-111111111111",
+      "service_name": "Demo Bistro",
+      "domain": "demobistro.test",
+      "published": true,
+      "version": "1",
+      "mcp_url": "http://localhost:8000/mcp/11111111-1111-1111-1111-111111111111",
+      "tools": [
+        {
+          "name": "search_menu",
+          "description": "Search the menu for dishes.",
+          "read_only": true
+        },
+        {
+          "name": "get_order_status",
+          "description": "Get the status of an order by its ID.",
+          "read_only": true
+        },
+        "..."
+      ],
+      "profile": {
+        "city": "Chicago",
+        "color": "#b23a1e",
+        "glyph": "utensils",
+        "tools": {
+          "place_order": {
+            "title": "Place an order",
+            "side_effect": "payment",
+            "example_args": "{...}",
+            "error_responses": "{...}",
+            "example_phrases": [
+              "order a margherita pizza from Demo Bistro",
+              "get me two tiramisu from Demo Bistro"
+            ],
+            "speakable_response": "Done. Order {order_id}: {quantity} × {item}. It should be ready in about {eta_minutes} minutes.",
+            "confirmation_prompt": "Should I order {quantity} × {item} from Demo Bistro?",
+            "requires_confirmation": true
+          },
+          "search_menu": {
+            "title": "Search the menu",
+            "side_effect": "none",
+            "example_args": "{...}",
+            "empty_response": "I couldn't find any dishes matching that.",
+            "example_phrases": [
+              "what's on the menu at Demo Bistro",
+              "what pasta does Demo Bistro have",
+              "..."
+            ],
+            "speakable_response": "I found {count:results} dishes at Demo Bistro, including {list:results.name}."
+          },
+          "get_order_status": {
+            "title": "Check an order",
+            "side_effect": "none",
+            "example_args": "{...}",
+            "error_responses": "{...}",
+            "example_phrases": [
+              "what is the status of order A1042",
+              "where is my Demo Bistro order",
+              "..."
+            ],
+            "speakable_response": "Order {order_id} is {status}. It should be with you in about {eta_minutes} minutes."
+          }
+        },
+        "phrases": [
+          "what pasta does Demo Bistro have",
+          "what is the status of order A1042",
+          "..."
+        ],
+        "tagline": "Search the menu, order and track it",
+        "category": "Food & drink",
+        "initials": "DB",
+        "auth_host": "auth.demobistro.test",
+        "terms_url": "https://demobistro.test/terms",
+        "description": "Neighborhood bistro with pickup and delivery. Search the menu, place orders and check on them.",
+        "privacy_url": "https://demobistro.test/privacy",
+        "scope_labels": {
+          "read": "See the menu and your orders",
+          "order": "Place orders for you"
+        }
+      },
+      "scopes": [
+        "read",
+        "order"
+      ],
+      "published_at": "2026-10-23T01:31:44.585022",
+      "connected_users": 2,
+      "update_available": false
+    },
+    "errors": {
+      "404": "unknown service",
+      "422": "bad service_uuid"
+    }
+  },
+  "PATCH /me/services/{service_uuid}": {
+    "request": {
+      "enabled": false
+    },
+    "response": "the MyService row (as in GET /me/services)",
+    "notes": "Off = the gateway answers 'X is switched off' for this user."
+  },
+  "DELETE /me/services/{service_uuid}": {
+    "request": "(Authorization: Bearer <user_token>)",
+    "response": "204",
+    "errors": {
+      "404": "not connected"
+    }
+  },
+  "GET /me/notifications": {
+    "request": "(Authorization: Bearer <user_token>)",
+    "response": [
+      {
+        "id": 10,
+        "kind": "approved",
+        "text": "Pine & Petal 1.1 was approved and is in the Alexa+ catalog.",
+        "link": "/owner/71d3f493-e290-56c0-818a-832db9a336ca",
+        "read": false,
+        "created_at": "2026-10-23T03:55:12.518982"
+      },
+      {
+        "id": 7,
+        "kind": "approved",
+        "text": "Pine & Petal 1.0 was approved and is in the Alexa+ catalog.",
+        "link": "/owner/71d3f493-e290-56c0-818a-832db9a336ca",
+        "read": false,
+        "created_at": "2026-10-23T03:52:58.675012"
+      }
+    ]
+  },
+  "POST /me/notifications/read": {
+    "request": "(Authorization: Bearer <user_token>)",
+    "response": "204"
+  },
+  "POST /assistant/ask": {
+    "request": [
+      {
+        "text": "order 2 tiramisu from Demo Bistro",
+        "pending": null,
+        "memory": {}
+      },
+      {
+        "text": "yes",
+        "pending": {
+          "service_uuid": "11111111-1111-1111-1111-111111111111",
+          "tool": "place_order",
+          "arguments": {
+            "item": "Tiramisu",
+            "quantity": 2
+          }
+        },
+        "memory": {}
+      }
+    ],
+    "response": [
+      {
+        "reply": "Should I order 2 × Tiramisu from Demo Bistro?",
+        "kind": "confirm",
+        "memory": {},
+        "pending": {
+          "service_uuid": "11111111-1111-1111-1111-111111111111",
+          "tool": "place_order",
+          "arguments": {
+            "item": "Tiramisu",
+            "quantity": 2
+          }
+        },
+        "suggestions": [
+          "what pasta does Demo Bistro have",
+          "what is the status of order A1042",
+          "..."
+        ],
+        "user_id": "alice"
+      },
+      {
+        "reply": "I found 2 dishes at Demo Bistro, including Spaghetti Carbonara and Penne Arrabbiata.",
+        "kind": "answer",
+        "memory": {},
+        "pending": null,
+        "suggestions": [
+          "what pasta does Demo Bistro have",
+          "what is the status of order A1042",
+          "..."
+        ],
+        "call": {
+          "service_uuid": "11111111-1111-1111-1111-111111111111",
+          "service_name": "Demo Bistro",
+          "tool": "search_menu",
+          "arguments": {
+            "query": "pasta"
+          },
+          "is_error": false,
+          "status": null,
+          "ms": 66,
+          "data": {
+            "query": "pasta",
+            "results": [
+              "{...}",
+              "{...}"
+            ]
+          }
+        },
+        "items": [
+          {
+            "name": "Spaghetti Carbonara",
+            "detail": "pasta",
+            "price": 14.5
+          },
+          {
+            "name": "Penne Arrabbiata",
+            "detail": "pasta, spicy",
+            "price": 12.0
+          }
+        ],
+        "user_id": "alice"
+      }
+    ],
+    "notes": "kind: answer | confirm (send pending back with yes/no) | clarify | blocked (link=true) | none."
+  },
+  "GET /features": {
+    "request": "(no auth)",
+    "response": [
+      {
+        "id": "alexa_registration",
+        "title": "Real Alexa+ registration",
+        "status": "not_built",
+        "detail": "The Alexa+ MCP toolkit is partner-only. Publishing runs a mock registrar; the MCP URL works with any MCP client, but nothing is registered with Alexa.",
+        "where": [
+          "client.publish.registering",
+          "review.catalog"
+        ]
+      },
+      {
+        "id": "llm_routing",
+        "title": "LLM intent routing in Ask mode",
+        "status": "not_built",
+        "detail": "Ask mode matches what you say to a tool using each service's example phrases and templates (no LLM). An LLM router is a planned stretch goal.",
+        "where": [
+          "client.simulator.ask"
+        ]
+      },
+      "..."
+    ]
+  },
+  "GET /api/owner/connectors": {
+    "request": "(Authorization: Bearer <user_token>) role=owner",
+    "response": [
+      {
+        "service_uuid": "71d3f493-e290-56c0-818a-832db9a336ca",
+        "service_name": "Pine & Petal",
+        "domain": "pinepetal.test",
+        "submissions": [
+          {
+            "id": 43,
+            "service_uuid": "71d3f493-e290-56c0-818a-832db9a336ca",
+            "service_name": "Pine & Petal",
+            "domain": "pinepetal.test",
+            "version": "1.1",
+            "status": "approved",
+            "submitted_at": "2026-10-23T03:54:18.120640",
+            "reviewed_at": "2026-10-23T03:55:12.494157",
+            "assignee": "reviewer",
+            "reviewer": "reviewer",
+            "reason": null,
+            "note": "Tried the tools with the test account.",
+            "message": "Adds order tracking (flower_order_status).",
+            "attachment_name": null,
+            "category": "Shopping",
+            "city": "Oak Park",
+            "description": "Neighborhood florist. Browse bouquets by occasion and send flowers the same day.",
+            "brand_color": "#a3456b",
+            "owner": "{...}",
+            "checks": "{...}",
+            "tools_count": 3,
+            "write_count": 1
+          },
+          {
+            "id": 6,
+            "service_uuid": "71d3f493-e290-56c0-818a-832db9a336ca",
+            "service_name": "Pine & Petal",
+            "domain": "pinepetal.test",
+            "version": "1.0",
+            "status": "approved",
+            "submitted_at": "2026-10-22T03:13:22.454847",
+            "reviewed_at": "2026-10-23T03:52:58.652085",
+            "assignee": "reviewer",
+            "reviewer": "reviewer",
+            "reason": null,
+            "note": "Tried the tools with the test account.",
+            "message": "First version: bouquet search and same-day orders. Test account details are in the private block.",
+            "attachment_name": null,
+            "category": "Shopping",
+            "city": "Oak Park",
+            "description": "Neighborhood florist. Browse bouquets by occasion and send flowers the same day.",
+            "brand_color": "#a3456b",
+            "owner": "{...}",
+            "checks": "{...}",
+            "tools_count": 2,
+            "write_count": 1
+          }
+        ],
+        "status": "live",
+        "live": {
+          "in_catalog": true,
+          "published": true,
+          "version": "2",
+          "published_at": "2026-10-23T03:55:14.616690",
+          "connected_users": 1,
+          "profile": {
+            "city": "Oak Park",
+            "color": "#a3456b",
+            "glyph": "bag",
+            "tools": "{...}",
+            "phrases": [
+              "send Classic Red Roses to Mom from Pine & Petal",
+              "what bouquets does Pine & Petal have for a birthday",
+              "..."
+            ],
+            "tagline": "Fresh bouquets, delivered today",
+            "category": "Shopping",
+            "initials": "PP",
+            "auth_host": "localhost",
+            "terms_url": "https://pinepetal.test/terms",
+            "description": "Neighborhood florist. Browse bouquets by occasion and send flowers the same day.",
+            "privacy_url": "https://pinepetal.test/privacy",
+            "scope_labels": "{...}"
+          }
+        },
+        "live_version": "1.1",
+        "category": "Shopping",
+        "profile": {
+          "city": "Oak Park",
+          "color": "#a3456b",
+          "glyph": "bag",
+          "tools": {
+            "order_bouquet": "{...}",
+            "search_bouquets": "{...}",
+            "flower_order_status": "{...}"
+          },
+          "phrases": [
+            "send Classic Red Roses to Mom from Pine & Petal",
+            "what bouquets does Pine & Petal have for a birthday",
+            "..."
+          ],
+          "tagline": "Fresh bouquets, delivered today",
+          "category": "Shopping",
+          "initials": "PP",
+          "auth_host": "localhost",
+          "terms_url": "https://pinepetal.test/terms",
+          "description": "Neighborhood florist. Browse bouquets by occasion and send flowers the same day.",
+          "privacy_url": "https://pinepetal.test/privacy",
+          "scope_labels": {
+            "shop": "See bouquets and send flowers for you"
+          }
+        }
+      }
+    ],
+    "errors": {
+      "403": "needs a owner account",
+      "503": "needs the Postgres registry"
+    }
+  },
+  "POST /api/owner/checks": {
+    "request": {
+      "manifest": "<connector manifest>"
+    },
+    "response": {
+      "passed": true,
+      "checks": [
+        {
+          "id": "schema",
+          "title": "Manifest schema is valid",
+          "status": "ok",
+          "message": "manifestVersion 1.0 with publisher, accountLinking, private and openapi blocks present."
+        },
+        {
+          "id": "openapi",
+          "title": "OpenAPI spec is valid and maps to MCP tools",
+          "status": "ok",
+          "message": "OpenAPI 3.1.0 · Pine & Petal API 1.1 · 3 operations, all mapped to MCP tools."
+        },
+        "..."
+      ],
+      "tools": [
+        {
+          "name": "search_bouquets",
+          "title": "Find bouquets",
+          "description": "Find bouquets by occasion or flower, such as birthday or roses.",
+          "method": "GET",
+          "path": "/bouquets",
+          "read_only": true,
+          "side_effect": "none",
+          "params": [
+            "{...}"
+          ],
+          "requires_confirmation": false,
+          "confirmation_prompt": null,
+          "speakable_response": "Pine & Petal has {count:bouquets} bouquets, including {list:bouquets.name}.",
+          "empty_response": "Pine & Petal has nothing for that occasion right now.",
+          "error_responses": {},
+          "example_phrases": [
+            "what bouquets does Pine & Petal have for a birthday",
+            "show me roses from Pine & Petal",
+            "..."
+          ],
+          "example_args": {
+            "occasion": "birthday"
+          }
+        },
+        {
+          "name": "order_bouquet",
+          "title": "Send a bouquet",
+          "description": "Order a bouquet for same-day delivery to someone in your address book.",
+          "method": "POST",
+          "path": "/orders",
+          "read_only": false,
+          "side_effect": "payment",
+          "params": [
+            "{...}",
+            "{...}"
+          ],
+          "requires_confirmation": true,
+          "confirmation_prompt": "Should I send {bouquet} to {recipient} from Pine & Petal?",
+          "speakable_response": "Done. Order {order_id}: {bouquet} for {recipient} is on its way today.",
+          "empty_response": null,
+          "error_responses": {
+            "404": "Pine & Petal doesn't have that bouquet."
+          },
+          "example_phrases": [
+            "send Classic Red Roses to Mom from Pine & Petal",
+            "order a bouquet of Spring Tulips for Sam"
+          ],
+          "example_args": {
+            "bouquet": "Spring Tulips",
+            "recipient": "Mom"
+          }
+        },
+        "..."
+      ],
+      "version": "1.1"
+    }
+  },
+  "POST /api/owner/submissions": {
+    "request": {
+      "manifest": "<connector manifest>",
+      "message": "Adds order tracking",
+      "attachment": {
+        "name": "notes.pdf",
+        "content_base64": "<base64 PDF, 5 MB max>"
+      }
+    },
+    "response": "201 + the submission (as in GET /api/review/submissions/{id})",
+    "errors": {
+      "422": "Fix the failed checks first: ...",
+      "409": "already waiting for review / version already sent",
+      "403": "domain belongs to another business account"
+    }
+  },
+  "GET /api/review/submissions": {
+    "request": "?status=pending|in_review|approved|rejected  (Authorization: Bearer <user_token>) role=reviewer",
+    "response": [
+      {
+        "id": 43,
+        "service_uuid": "71d3f493-e290-56c0-818a-832db9a336ca",
+        "service_name": "Pine & Petal",
+        "domain": "pinepetal.test",
+        "version": "1.1",
+        "status": "approved",
+        "submitted_at": "2026-10-23T03:54:18.120640",
+        "reviewed_at": "2026-10-23T03:55:12.494157",
+        "assignee": "reviewer",
+        "reviewer": "reviewer",
+        "reason": null,
+        "note": "Tried the tools with the test account.",
+        "message": "Adds order tracking (flower_order_status).",
+        "attachment_name": null,
+        "category": "Shopping",
+        "city": "Oak Park",
+        "description": "Neighborhood florist. Browse bouquets by occasion and send flowers the same day.",
+        "brand_color": "#a3456b",
+        "owner": {
+          "user_id": "pinepetal-owner",
+          "display_name": "Priya Shah",
+          "email": "hello@pinepetal.example"
+        },
+        "checks": {
+          "passed": true,
+          "total": 8,
+          "ok": 5,
+          "warn": 3,
+          "err": 0
+        },
+        "tools_count": 3,
+        "write_count": 1
+      },
+      {
+        "id": 6,
+        "service_uuid": "71d3f493-e290-56c0-818a-832db9a336ca",
+        "service_name": "Pine & Petal",
+        "domain": "pinepetal.test",
+        "version": "1.0",
+        "status": "approved",
+        "submitted_at": "2026-10-22T03:13:22.454847",
+        "reviewed_at": "2026-10-23T03:52:58.652085",
+        "assignee": "reviewer",
+        "reviewer": "reviewer",
+        "reason": null,
+        "note": "Tried the tools with the test account.",
+        "message": "First version: bouquet search and same-day orders. Test account details are in the private block.",
+        "attachment_name": null,
+        "category": "Shopping",
+        "city": "Oak Park",
+        "description": "Neighborhood florist. Browse bouquets by occasion and send flowers the same day.",
+        "brand_color": "#a3456b",
+        "owner": {
+          "user_id": "pinepetal-owner",
+          "display_name": "Priya Shah",
+          "email": "hello@pinepetal.example"
+        },
+        "checks": {
+          "passed": true,
+          "total": 8,
+          "ok": 5,
+          "warn": 3,
+          "err": 0
+        },
+        "tools_count": 2,
+        "write_count": 1
+      },
+      "..."
+    ]
+  },
+  "GET /api/review/submissions/{id}": {
+    "request": "(Authorization: Bearer <user_token>)",
+    "response": {
+      "id": 43,
+      "service_uuid": "71d3f493-e290-56c0-818a-832db9a336ca",
+      "service_name": "Pine & Petal",
+      "domain": "pinepetal.test",
+      "version": "1.1",
+      "status": "approved",
+      "submitted_at": "2026-10-23T03:54:18.120640",
+      "reviewed_at": "2026-10-23T03:55:12.494157",
+      "assignee": "reviewer",
+      "reviewer": "reviewer",
+      "reason": null,
+      "note": "Tried the tools with the test account.",
+      "message": "Adds order tracking (flower_order_status).",
+      "attachment_name": null,
+      "category": "Shopping",
+      "city": "Oak Park",
+      "description": "Neighborhood florist. Browse bouquets by occasion and send flowers the same day.",
+      "brand_color": "#a3456b",
+      "owner": {
+        "user_id": "pinepetal-owner",
+        "display_name": "Priya Shah",
+        "email": "hello@pinepetal.example"
+      },
+      "checks": {
+        "passed": true,
+        "total": 8,
+        "ok": 5,
+        "warn": 3,
+        "err": 0
+      },
+      "tools_count": 3,
+      "write_count": 1,
+      "manifest": {
+        "openapi": {
+          "info": {
+            "title": "Pine & Petal API",
+            "version": "1.1",
+            "description": "Fresh bouquets, delivered today"
+          },
+          "paths": {
+            "/orders": "{...}",
+            "/bouquets": "{...}",
+            "/orders/{order_id}": "{...}"
+          },
+          "openapi": "3.1.0",
+          "servers": [
+            "{...}"
+          ],
+          "components": {
+            "schemas": "{...}"
+          }
+        },
+        "private": {
+          "reviewNotes": "The test account can order any bouquet; nothing is charged.",
+          "testAccount": {
+            "password": "petals-test-account",
+            "username": "reviewer@pinepetal.test"
+          },
+          "clientSecret": "stored-in-secrets-store"
+        },
+        "publisher": {
+          "city": "Oak Park",
+          "name": "Pine & Petal",
+          "domain": "pinepetal.test",
+          "tagline": "Fresh bouquets, delivered today",
+          "category": "Shopping",
+          "termsUrl": "https://pinepetal.test/terms",
+          "brandColor": "#a3456b",
+          "description": "Neighborhood florist. Browse bouquets by occasion and send flowers the same day.",
+          "contactEmail": "hello@pinepetal.example",
+          "privacyPolicyUrl": "https://pinepetal.test/privacy"
+        },
+        "accountLinking": {
+          "pkce": false,
+          "type": "oauth2_authorization_code",
+          "scopes": [
+            "shop"
+          ],
+          "clientId": "mcp-bridge",
+          "tokenUrl": "http://localhost:9100/token",
+          "scopeLabels": {
+            "shop": "See bouquets and send flowers for you"
+          },
+          "tokenAuthMethod": "client_secret_post",
+          "authorizationUrl": "http://localhost:9100/authorize"
+        },
+        "manifestVersion": "1.0"
+      },
+      "check_report": {
+        "tools": [
+          {
+            "name": "search_bouquets",
+            "path": "/bouquets",
+            "title": "Find bouquets",
+            "method": "GET",
+            "params": [
+              "{...}"
+            ],
+            "read_only": true,
+            "description": "Find bouquets by occasion or flower, such as birthday or roses.",
+            "side_effect": "none",
+            "example_args": "{...}",
+            "empty_response": "Pine & Petal has nothing for that occasion right now.",
+            "error_responses": "{...}",
+            "example_phrases": [
+              "what bouquets does Pine & Petal have for a birthday",
+              "show me roses from Pine & Petal",
+              "..."
+            ],
+            "speakable_response": "Pine & Petal has {count:bouquets} bouquets, including {list:bouquets.name}.",
+            "confirmation_prompt": null,
+            "requires_confirmation": false
+          },
+          {
+            "name": "order_bouquet",
+            "path": "/orders",
+            "title": "Send a bouquet",
+            "method": "POST",
+            "params": [
+              "{...}",
+              "{...}"
+            ],
+            "read_only": false,
+            "description": "Order a bouquet for same-day delivery to someone in your address book.",
+            "side_effect": "payment",
+            "example_args": "{...}",
+            "empty_response": null,
+            "error_responses": "{...}",
+            "example_phrases": [
+              "send Classic Red Roses to Mom from Pine & Petal",
+              "order a bouquet of Spring Tulips for Sam"
+            ],
+            "speakable_response": "Done. Order {order_id}: {bouquet} for {recipient} is on its way today.",
+            "confirmation_prompt": "Should I send {bouquet} to {recipient} from Pine & Petal?",
+            "requires_confirmation": true
+          },
+          "..."
+        ],
+        "checks": [
+          {
+            "id": "schema",
+            "title": "Manifest schema is valid",
+            "status": "ok",
+            "message": "manifestVersion 1.0 with publisher, accountLinking, private and openapi blocks present."
+          },
+          {
+            "id": "openapi",
+            "title": "OpenAPI spec is valid and maps to MCP tools",
+            "status": "ok",
+            "message": "OpenAPI 3.1.0 · Pine & Petal API 1.1 · 3 operations, all mapped to MCP tools."
+          },
+          "..."
+        ],
+        "passed": true,
+        "version": "1.1"
+      },
+      "history": [
+        {
+          "id": 6,
+          "service_uuid": "71d3f493-e290-56c0-818a-832db9a336ca",
+          "service_name": "Pine & Petal",
+          "domain": "pinepetal.test",
+          "version": "1.0",
+          "status": "approved",
+          "submitted_at": "2026-10-22T03:13:22.454847",
+          "reviewed_at": "2026-10-23T03:52:58.652085",
+          "assignee": "reviewer",
+          "reviewer": "reviewer",
+          "reason": null,
+          "note": "Tried the tools with the test account.",
+          "message": "First version: bouquet search and same-day orders. Test account details are in the private block.",
+          "attachment_name": null,
+          "category": "Shopping",
+          "city": "Oak Park",
+          "description": "Neighborhood florist. Browse bouquets by occasion and send flowers the same day.",
+          "brand_color": "#a3456b",
+          "owner": {
+            "user_id": "pinepetal-owner",
+            "display_name": "Priya Shah",
+            "email": "hello@pinepetal.example"
+          },
+          "checks": {
+            "passed": true,
+            "total": 8,
+            "ok": 5,
+            "warn": 3,
+            "err": 0
+          },
+          "tools_count": 2,
+          "write_count": 1
+        }
+      ],
+      "live": {
+        "in_catalog": true,
+        "published": true,
+        "version": "2",
+        "published_at": "2026-10-23T03:55:14.616690",
+        "connected_users": 1,
+        "profile": {
+          "city": "Oak Park",
+          "color": "#a3456b",
+          "glyph": "bag",
+          "tools": {
+            "order_bouquet": "{...}",
+            "search_bouquets": "{...}",
+            "flower_order_status": "{...}"
+          },
+          "phrases": [
+            "send Classic Red Roses to Mom from Pine & Petal",
+            "what bouquets does Pine & Petal have for a birthday",
+            "..."
+          ],
+          "tagline": "Fresh bouquets, delivered today",
+          "category": "Shopping",
+          "initials": "PP",
+          "auth_host": "localhost",
+          "terms_url": "https://pinepetal.test/terms",
+          "description": "Neighborhood florist. Browse bouquets by occasion and send flowers the same day.",
+          "privacy_url": "https://pinepetal.test/privacy",
+          "scope_labels": {
+            "shop": "See bouquets and send flowers for you"
+          }
+        }
+      }
+    }
+  },
+  "POST /api/review/submissions/{id}/start": {
+    "request": {},
+    "response": "the submission",
+    "notes": "-> in_review, assigned to the reviewer",
+    "errors": {
+      "409": "already decided"
+    }
+  },
+  "POST /api/review/submissions/{id}/approve": {
+    "request": {
+      "note": "Looks good"
+    },
+    "response": "the submission",
+    "notes": "-> approved; the service is upserted into the catalog",
+    "errors": {
+      "409": "already decided"
+    }
+  },
+  "POST /api/review/submissions/{id}/reject": {
+    "request": {
+      "reason": "At least 20 characters explaining what to fix"
+    },
+    "response": "the submission",
+    "notes": "-> rejected; the owner is notified",
+    "errors": {
+      "409": "already decided"
+    }
+  },
+  "POST /api/review/submissions/{id}/try": {
+    "request": {
+      "tool": "search_bouquets",
+      "arguments": {
+        "occasion": "roses"
+      }
+    },
+    "response": {
+      "tool": "search_bouquets",
+      "arguments": {
+        "occasion": "roses"
+      },
+      "request": {
+        "method": "GET",
+        "url": "http://localhost:9300/florist/bouquets?occasion=roses"
+      },
+      "status": 200,
+      "is_error": false,
+      "data": {
+        "occasion": "roses",
+        "bouquets": [
+          {
+            "name": "Classic Red Roses",
+            "price": 65.0,
+            "occasions": [
+              "anniversary",
+              "love",
+              "..."
+            ]
+          }
+        ]
+      },
+      "text": "Pine & Petal has 1 bouquets, including Classic Red Roses.",
+      "account": "reviewer@pinepetal.test"
+    },
+    "notes": "Signs the manifest's test account in at the service's OAuth server and calls its API. Nothing is published."
+  },
+  "GET /api/review/catalog": {
+    "request": "(Authorization: Bearer <user_token>)",
+    "response": [
+      {
+        "service_uuid": "11111111-1111-1111-1111-111111111111",
+        "service_name": "Demo Bistro",
+        "domain": "demobistro.test",
+        "profile": {
+          "city": "Chicago",
+          "color": "#b23a1e",
+          "glyph": "utensils",
+          "tools": {
+            "place_order": "{...}",
+            "search_menu": "{...}",
+            "get_order_status": "{...}"
+          },
+          "phrases": [
+            "what pasta does Demo Bistro have",
+            "what is the status of order A1042",
+            "..."
+          ],
+          "tagline": "Search the menu, order and track it",
+          "category": "Food & drink",
+          "initials": "DB",
+          "auth_host": "auth.demobistro.test",
+          "terms_url": "https://demobistro.test/terms",
+          "description": "Neighborhood bistro with pickup and delivery. Search the menu, place orders and check on them.",
+          "privacy_url": "https://demobistro.test/privacy",
+          "scope_labels": {
+            "read": "See the menu and your orders",
+            "order": "Place orders for you"
+          }
+        },
+        "business": "Demo Bistro Pvt Ltd",
+        "approved_version": "1.0",
+        "approved_at": "2026-10-13T03:13:21.909174",
+        "published": true,
+        "bundle_version": "1",
+        "published_at": "2026-10-23T01:31:44.585022",
+        "connected_users": 2,
+        "tools_count": 3
+      },
+      {
+        "service_uuid": "22222222-2222-2222-2222-222222222222",
+        "service_name": "Lakeside Dental",
+        "domain": "lakesidedental.test",
+        "profile": {
+          "city": "Evanston",
+          "color": "#1f6f8b",
+          "glyph": "calendar",
+          "tools": {
+            "next_available": "{...}",
+            "my_appointments": "{...}",
+            "book_appointment": "{...}",
+            "cancel_appointment": "{...}"
+          },
+          "phrases": [
+            "when is the next cleaning at Lakeside Dental",
+            "book slot_0914 at Lakeside Dental",
+            "..."
+          ],
+          "tagline": "Book and manage appointments",
+          "category": "Health & wellness",
+          "initials": "LD",
+          "auth_host": "patients.lakesidedental.test",
+          "terms_url": "https://lakesidedental.test/terms",
+          "description": "Family dental practice. Find open slots, book and cancel appointments.",
+          "privacy_url": "https://lakesidedental.test/privacy",
+          "scope_labels": {
+            "appointments": "See and book your appointments"
+          }
+        },
+        "business": "Lakeside Health Group",
+        "approved_version": "1.0",
+        "approved_at": "2026-10-15T03:13:22.043509",
+        "published": true,
+        "bundle_version": "1",
+        "published_at": "2026-10-23T03:41:33.032973",
+        "connected_users": 3,
+        "tools_count": 4
+      },
+      "..."
+    ]
+  },
+  "GET /api/submissions/{id}/attachment": {
+    "request": "(Authorization: Bearer <user_token>) (owner of it, or a reviewer)",
+    "response": "application/pdf"
+  }
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useToast } from '../components/Toast.jsx';
+import { MOCK } from '../lib/config.js';
 import { mcpUrl } from '../data/manifest.js';
 import Icon from '../lib/Icon.jsx';
 import { MENU, fill } from '../sim/demoBistro.js';
@@ -15,7 +16,8 @@ function initialValues(tool) {
   tool.params.forEach((p) => {
     if (p.name === 'items') return;
     if (isEnum(p)) v[p.name] = p.default != null ? String(p.default) : p.required ? p.type.split(' | ')[0] : '';
-    else v[p.name] = p.name === 'order_id' ? 'A1042' : p.name === 'query' ? 'wrap' : p.default != null ? String(p.default) : '';
+    // Real API: defaults are the business's example values. The offline demo fills in its own.
+    else v[p.name] = p.default != null ? String(p.default) : !MOCK ? '' : p.name === 'order_id' ? 'A1042' : p.name === 'query' ? 'wrap' : '';
   });
   return v;
 }
@@ -30,14 +32,25 @@ export default function ToolsPanel({ preset }) {
     if (preset && usable.includes(preset)) return preset;
     return usable.includes(sim.uuid) ? sim.uuid : usable[0] || null;
   });
-  const defs = uuid ? backend.toolDefs(uuid) : [];
+  // tools/list: synchronous in the mock, a gateway call with the real API.
+  const [loaded, setLoaded] = useState({ uuid: null, defs: [], error: null });
+  useEffect(() => {
+    if (!uuid) return undefined;
+    let live = true;
+    Promise.resolve(backend.toolDefs(uuid, me.id))
+      .then((d) => { if (live) setLoaded({ uuid, defs: d, error: null }); })
+      .catch((e) => { if (live) setLoaded({ uuid, defs: [], error: e.message }); });
+    return () => { live = false; };
+  }, [backend, uuid, me.id]);
+  const defs = loaded.uuid === uuid ? loaded.defs : [];
   const [toolName, setToolName] = useState(() => (uuid === sim.uuid ? sim.tool : null));
   const tool = defs.find((t) => t.name === toolName) || defs[0];
   const [results, setResults] = useState(sim.results);
+  const [calling, setCalling] = useState(false);
 
   // Remember the selection per user across openings of the simulator.
   const currentTool = tool ? tool.name : null;
-  useEffect(() => { rememberSim(me.id, { uuid, tool: currentTool }); }, [rememberSim, me.id, uuid, currentTool]);
+  useEffect(() => { if (currentTool) rememberSim(me.id, { uuid, tool: currentTool }); }, [rememberSim, me.id, uuid, currentTool]);
 
   if (!uuid) {
     return (
@@ -50,12 +63,16 @@ export default function ToolsPanel({ preset }) {
     );
   }
 
-  const call = (args) => {
-    const r = backend.gatewayCall(me.id, uuid, tool, args);
+  const call = async (args) => {
+    setCalling(true);
+    const r = await backend.gatewayCall(me.id, uuid, tool, args);
+    setCalling(false);
     const entry = { svc: backend.catalog[uuid].name, user: me.id, url: mcpUrl(uuid), ...r };
-    const next = [entry, ...results];
-    rememberSim(me.id, { results: next });
-    setResults(next);
+    setResults((prev) => {
+      const next = [entry, ...prev];
+      rememberSim(me.id, { results: next });
+      return next;
+    });
     if (voiceOn) speak(r.text);
   };
 
@@ -75,15 +92,22 @@ export default function ToolsPanel({ preset }) {
       <div className="conn">
         MCP client → <b>POST {mcpUrl(uuid)}</b><br />
         Authorization: Bearer •••• ({me.name}'s user token)<br />
-        initialize <span className="ok">ok</span> · tools/list <span className="ok">{defs.length} tools</span>
+        {loaded.error
+          ? <>tools/list <span className="err">{loaded.error}</span></>
+          : tool
+            ? <>initialize <span className="ok">ok</span> · tools/list <span className="ok">{defs.length} tools</span></>
+            : 'initialize · tools/list ...'}
       </div>
-      <div className="tool-pick" role="group" aria-label="Tool" style={{ marginTop: 14 }}>
-        {defs.map((t) => (
-          <button type="button" className="chip" key={t.name} aria-pressed={t.name === tool.name} onClick={() => setToolName(t.name)}>{t.name}</button>
-        ))}
-      </div>
-
-      <ToolForm key={uuid + ':' + tool.name} tool={tool} onCall={call} />
+      {tool && (
+        <>
+          <div className="tool-pick" role="group" aria-label="Tool" style={{ marginTop: 14 }}>
+            {defs.map((t) => (
+              <button type="button" className="chip" key={t.name} aria-pressed={t.name === tool.name} onClick={() => setToolName(t.name)}>{t.name}</button>
+            ))}
+          </div>
+          <ToolForm key={uuid + ':' + tool.name} tool={tool} onCall={call} busy={calling} />
+        </>
+      )}
 
       <div className="section-h" style={{ paddingTop: 24 }}>Results</div>
       <div className="stack">
@@ -95,7 +119,7 @@ export default function ToolsPanel({ preset }) {
             </div>
             <div className="rw"><span className="k">Arguments</span><pre>{JSON.stringify(r.arguments, null, 2)}</pre></div>
             <div className="rw"><span className="k">Gateway</span><pre>{'POST ' + r.url + '\nuser_id: ' + r.user + ' (from the user token)'}</pre></div>
-            <div className="rw"><span className="k">Upstream</span><pre>{r.request ? r.request.method + ' ' + r.request.url + '\n→ ' + r.status : 'Not called'}</pre></div>
+            <div className="rw"><span className="k">Upstream</span><pre>{r.request ? r.request.method + ' ' + r.request.url + '\n→ ' + r.status : r.upstream || 'Not called'}</pre></div>
             <div className="rw">
               <span className="k">Alexa says</span>
               <div className="row" style={{ alignItems: 'flex-start', gap: 8 }}>
@@ -112,7 +136,7 @@ export default function ToolsPanel({ preset }) {
   );
 }
 
-function ToolForm({ tool, onCall }) {
+function ToolForm({ tool, onCall, busy }) {
   const toast = useToast();
   const hasItems = tool.params.some((p) => p.name === 'items');
   const [values, setValues] = useState(() => initialValues(tool));
@@ -133,6 +157,7 @@ function ToolForm({ tool, onCall }) {
     if (tool.read_only) { run(); return; }
     const a = collect();
     setPrompt(fill(tool.confirm || 'Should I go ahead?', {
+      ...a,
       fulfillment: a.fulfillment || 'delivery',
       slot: (SLOTS.find((s) => s.id === a.slot_id) || {}).label || 'that time',
       party_size: a.party_size,
@@ -201,7 +226,7 @@ function ToolForm({ tool, onCall }) {
         )}
       </div>
 
-      <button type="submit" className="btn btn-primary btn-lg"><Icon name="play" />tools/call {tool.name}</button>
+      <button type="submit" className="btn btn-primary btn-lg" disabled={busy}><Icon name="play" />{busy ? 'Calling...' : 'tools/call ' + tool.name}</button>
     </form>
   );
 }

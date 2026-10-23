@@ -4,6 +4,7 @@ import Launcher from './launcher/Launcher.jsx';
 import OwnerApp from './owner/OwnerApp.jsx';
 import ReviewApp from './review/ReviewApp.jsx';
 import ClientApp from './client/ClientApp.jsx';
+import ConnectDone from './client/ConnectDone.jsx';
 import './launcher/launcher.css';
 
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
         <Route path="/owner/*" element={<OwnerApp />} />
         <Route path="/review/*" element={<ReviewApp />} />
         <Route path="/client/*" element={<ClientApp />} />
+        <Route path="/connect/done" element={<ConnectDone />} />
         <Route path="*" element={<Launcher />} />
       </Routes>
     </ToastProvider>

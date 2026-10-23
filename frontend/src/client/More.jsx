@@ -13,7 +13,13 @@ export default function More() {
   const toast = useToast();
   const others = backend.users().filter((u) => u.id !== me.id);
 
-  const switchTo = (u) => {
+  const switchTo = async (u) => {
+    try {
+      await backend.login(u.id); // fetches that user's token (and services) with the real API
+    } catch (e) {
+      toast(e.message, 'err');
+      return;
+    }
     signIn(u.id);
     navigate('/client');
     toast('Signed in as ' + u.name, 'ok', 2000);
@@ -33,7 +39,7 @@ export default function More() {
         {others.map((u) => (
           <button type="button" className="profile-row" key={u.id} onClick={() => switchTo(u)}>
             <span className="av" style={{ background: u.color }}>{u.name[0]}</span>
-            <span><b>{u.name}</b><span className="small muted" style={{ display: 'block' }}>{Object.keys(u.services).length} services</span></span>
+            <span><b>{u.name}</b><span className="small muted" style={{ display: 'block' }}>{u.services ? Object.keys(u.services).length + ' services' : u.email}</span></span>
             <span className="cur"><Icon name="chevron-right" /></span>
           </button>
         ))}

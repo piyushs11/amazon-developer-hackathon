@@ -34,6 +34,7 @@ INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
+RATE_LIMITED = -32029  # implementation-defined server error range
 
 
 class RpcError(Exception):
@@ -53,6 +54,7 @@ class Request:
         self.service_name = service_name  # display name, e.g. "Demo Bistro"
         self.bundle = bundle
         self.base_url = base_url  # where the tools send their API calls (registry + rewrites)
+        self.upstream_problem: str | None = None  # set when the allow-list refuses base_url
         self.request_id = uuid.uuid4().hex[:16]
 
 
@@ -126,12 +128,41 @@ async def _call_tool(req: Request, params: dict) -> dict:
     return result
 
 
+def _reconnect(req: Request) -> dict:
+    return _result(f"Your {req.service_name} connection expired. Please reconnect it in MCP Bridge.",
+                   is_error=True)
+
+
+async def _mark_expired(req: Request) -> None:
+    """The upstream sign-in no longer works: show "Reconnect" in the app and tell the user."""
+    from backend.app.notifications import notify
+
+    try:
+        changed = await asyncio.to_thread(get_mapping().set_status, req.user_id, req.service_uuid, "expired")
+    except Exception:  # noqa: BLE001 — the answer already says "reconnect"; the badge is extra
+        log.warning("mark_expired failed request_id=%s", req.request_id)
+        return
+    if changed:
+        await asyncio.to_thread(notify, req.user_id, "expired",
+                                f"Your {req.service_name} sign-in expired. Reconnect it to keep using it.",
+                                f"/client/services/{req.service_uuid}")
+
+
 async def _run_tool(req: Request, tool: Tool, args: dict) -> dict:
     not_connected = _result(f"Please connect {req.service_name} in MCP Bridge first.",
                             is_error=True)
     connection = await asyncio.to_thread(get_mapping().get_connection, req.user_id, req.service_uuid)
-    if connection is None or connection.status != "active":
+    if connection is None or connection.status == "revoked":
         return not_connected
+    if connection.status == "expired":
+        return _reconnect(req)
+    if not connection.enabled:
+        return _result(f"{req.service_name} is switched off in MCP Bridge. Turn it on in Services to use it.",
+                       is_error=True)
+    if req.upstream_problem:
+        log.warning("upstream_blocked request_id=%s service_uuid=%s reason=%s",
+                    req.request_id, req.service_uuid, req.upstream_problem)
+        return _result(f"MCP Bridge won't call {req.service_name}: {req.upstream_problem}.", is_error=True)
 
     args = {k: v for k, v in args.items() if k != "token"}  # the LLM never supplies the token
     problem = _argument_error(tool, args)
@@ -143,10 +174,8 @@ async def _run_tool(req: Request, tool: Tool, args: dict) -> dict:
     except TokenError as exc:
         if exc.code == TokenError.NOT_CONNECTED:
             return not_connected
-        return _result(
-            f"Your {req.service_name} connection expired. Please reconnect it in MCP Bridge.",
-            is_error=True,
-        )
+        await _mark_expired(req)
+        return _reconnect(req)
 
     try:
         out = await call_with_token(
@@ -158,7 +187,10 @@ async def _run_tool(req: Request, tool: Tool, args: dict) -> dict:
         log.error("tool_failed request_id=%s tool=%s error=%s",
                   req.request_id, tool.name, type(exc).__name__)
         return _result(f"Something went wrong talking to {req.service_name}.", is_error=True)
-    return _from_tool_output(req, out)
+    result = _from_tool_output(req, out)
+    if result.pop("_rejected_token", False):
+        await _mark_expired(req)
+    return result
 
 
 def _from_tool_output(req: Request, out) -> dict:
@@ -173,10 +205,10 @@ def _from_tool_output(req: Request, out) -> dict:
         status = data["status"]
         if status is None or (isinstance(status, int) and not 200 <= status < 300):
             if status in (401, 403):
-                return _result(
+                return {**_result(
                     f"{req.service_name} rejected the connection. Please reconnect it in MCP Bridge.",
                     is_error=True,
-                )
+                ), "_rejected_token": True}
             return _result(str(data["message"]), data, is_error=True)
     text = out if isinstance(out, str) else json.dumps(data, default=str)
     return _result(text, data if isinstance(data, dict) else None)

@@ -4,10 +4,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app import gateway
+from backend.app.api.portal import router as portal_router
 from backend.app.api.router import router as api_router
+from backend.app.assistant.router import router as assistant_router
 from backend.app.auth import factory as auth_factory
 from backend.app.auth.router import router as auth_router
 from backend.app.auth.settings import get_settings
+from backend.app.features import router as features_router
 
 
 @asynccontextmanager
@@ -22,13 +25,16 @@ app = FastAPI(title="MCP Bridge", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[get_settings().frontend_url],
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "MCP-Protocol-Version"],
 )
 
 app.include_router(auth_router)  # Dev 3: POST /auth/demo-login
 app.include_router(api_router)  # C7: /resolve-service, /services, /oauth/*, /publish, /me/services
+app.include_router(portal_router)  # /api/owner/* and /api/review/*: submissions and Amazon review
+app.include_router(assistant_router)  # POST /assistant/ask: Ask mode over every live service
 app.include_router(gateway.router)  # Dev 3: POST /mcp/{service_uuid}
+app.include_router(features_router)  # GET /features: what is and isn't built yet
 
 
 @app.get("/health")

@@ -1,15 +1,13 @@
 import { useNavigate } from 'react-router-dom';
 import { NavItems, Row2 } from '../components/ConsoleShell.jsx';
-import CopyButton from '../components/CopyButton.jsx';
 import Icon from '../lib/Icon.jsx';
 import { fmtDate } from '../lib/utils.js';
-import OwnerShell, { GUIDE_PDF, SAMPLE_MANIFEST } from './OwnerShell.jsx';
+import OwnerShell, { GUIDE_PDF, SAMPLES } from './OwnerShell.jsx';
 import { StatusLabel, useOwner } from './ownerState.jsx';
 
 export default function ConnectorList() {
-  const { owner, latest: l } = useOwner();
+  const { connectors, error, resetWizard } = useOwner();
   const navigate = useNavigate();
-  const hostedUrl = `https://${owner.domain}/.well-known/alexa-connector.json`;
 
   const nav = (
     <NavItems items={[
@@ -17,9 +15,10 @@ export default function ConnectorList() {
       { label: 'Your connectors', to: '/owner', current: true, icon: 'grid' },
       { section: 'Resources' },
       { label: 'Owner submission guide (PDF)', href: GUIDE_PDF, ext: true, icon: 'pdf' },
-      { label: 'Sample manifest', href: SAMPLE_MANIFEST, ext: true, icon: 'file' },
+      ...SAMPLES.map((s) => ({ label: s.label, href: s.href, ext: true, icon: 'file' })),
     ]} />
   );
+  const newSubmission = () => { resetWizard(null); navigate('/owner/submit/1'); };
 
   return (
     <OwnerShell row2={<Row2 title="Your connectors" />} nav={nav}>
@@ -29,22 +28,34 @@ export default function ConnectorList() {
           <p className="lede">One connector per website. Upload a manifest, pass the automated checks, and Amazon reviews it. Approved connectors appear in the Alexa+ catalog.</p>
         </div>
         <div className="actions">
-          <button className="btn btn-primary" onClick={() => navigate('/owner/submit/1')}><Icon name="plus" />New submission</button>
+          <button className="btn btn-primary" onClick={newSubmission}><Icon name="plus" />New submission</button>
         </div>
       </div>
 
+      {error && <div className="banner err"><Icon name="alert" /><div>{error}</div></div>}
       <div className="card pad-0"><div className="table-wrap">
         <table className="tbl cards">
           <thead><tr><th>Connector</th><th>Domain</th><th>Category</th><th>Latest version</th><th>Status</th><th>Updated</th></tr></thead>
           <tbody>
-            <tr className="clickable" onClick={() => navigate('/owner/demobistro/overview')}>
-              <td className="primary" data-l="Connector">{owner.name}</td>
-              <td data-l="Domain">{owner.domain}</td>
-              <td data-l="Category">Food &amp; drink</td>
-              <td data-l="Latest version" className="tnum">{l.version}</td>
-              <td data-l="Status"><StatusLabel status={l.status} /></td>
-              <td data-l="Updated">{fmtDate(l.reviewed || l.submitted)}</td>
-            </tr>
+            {(connectors || []).map((c) => {
+              const latest = c.submissions[0];
+              return (
+                <tr key={c.service_uuid} className="clickable" onClick={() => navigate(`/owner/${c.service_uuid}/overview`)}>
+                  <td className="primary" data-l="Connector">{c.service_name}</td>
+                  <td data-l="Domain">{c.domain}</td>
+                  <td data-l="Category">{c.category || <span className="muted">-</span>}</td>
+                  <td data-l="Latest version" className="tnum">{latest?.version || c.live_version || '-'}</td>
+                  <td data-l="Status"><StatusLabel status={c.status} /></td>
+                  <td data-l="Updated">{latest ? fmtDate(latest.reviewed || latest.submitted) : '-'}</td>
+                </tr>
+              );
+            })}
+            {connectors && !connectors.length && (
+              <tr><td colSpan={6} className="muted" style={{ padding: '28px 16px', textAlign: 'center' }}>No connectors yet. Start with a new submission.</td></tr>
+            )}
+            {!connectors && !error && (
+              <tr><td colSpan={6} className="muted" style={{ padding: '28px 16px', textAlign: 'center' }}>Loading...</td></tr>
+            )}
           </tbody>
         </table>
       </div></div>
@@ -57,19 +68,13 @@ export default function ConnectorList() {
             <p>How to write the manifest, host the public copy, and what reviewers check. PDF.</p>
             <span className="row">Open <Icon name="external" cls="s" /></span>
           </a>
-          <a className="card" href={SAMPLE_MANIFEST} target="_blank" rel="noopener">
-            <Icon name="file" cls="l" /><h3>Sample manifest</h3>
-            <p>alexa-connector.upload.json for a restaurant with 3 endpoints. Copy it as a starting point.</p>
-            <span className="row">Open <Icon name="external" cls="s" /></span>
-          </a>
-          <div className="card">
-            <Icon name="globe" cls="l" /><h3>Host the public copy</h3>
-            <p>Publish your manifest without the private block at this address. It proves you own the domain and powers search by website.</p>
-            <div className="row">
-              <code className="grow" style={{ overflowWrap: 'anywhere' }}>{hostedUrl}</code>
-              <CopyButton value={hostedUrl} />
-            </div>
-          </div>
+          {SAMPLES.map((s) => (
+            <a className="card" key={s.href} href={s.href} target="_blank" rel="noopener">
+              <Icon name="file" cls="l" /><h3>{s.label}</h3>
+              <p>A complete manifest for a florist: OpenAPI endpoints with x-alexa phrases and templates, account linking and a test account.</p>
+              <span className="row">Open <Icon name="external" cls="s" /></span>
+            </a>
+          ))}
         </div>
       </div>
     </OwnerShell>

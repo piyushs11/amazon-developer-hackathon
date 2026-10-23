@@ -1,15 +1,17 @@
 import AccountMenu from '../components/AccountMenu.jsx';
 import ConsoleShell from '../components/ConsoleShell.jsx';
-import { useToast } from '../components/Toast.jsx';
 import Icon from '../lib/Icon.jsx';
 import { useOwner } from './ownerState.jsx';
 
 export const GUIDE_PDF = '/docs/owner-submission-guide.pdf';
-export const SAMPLE_MANIFEST = '/examples/demobistro/alexa-connector.upload.json';
+// Example manifests a business can start from (Pine & Petal: 1.0, and 1.1 which adds order tracking).
+export const SAMPLES = [
+  { href: '/examples/pinepetal-1.0.json', label: 'Sample manifest (Pine & Petal 1.0)' },
+  { href: '/examples/pinepetal-1.1.json', label: 'Sample update (Pine & Petal 1.1)' },
+];
 
 export default function OwnerShell({ row2, nav, children }) {
-  const { owner } = useOwner();
-  const toast = useToast();
+  const { owner, signOut } = useOwner();
 
   const right = (
     <>
@@ -17,13 +19,10 @@ export default function OwnerShell({ row2, nav, children }) {
         <Icon name="help" />
       </a>
       <AccountMenu
-        initials="DB"
+        initials={owner.initials}
         name={owner.name}
         detail={owner.email}
-        items={[
-          { label: 'Organization settings', onClick: () => toast('Organization settings are managed by your account owner.') },
-          { label: 'Sign out', onClick: () => toast('Signed out of the demo account. Reload to sign in again.') },
-        ]}
+        items={[{ label: 'Sign out', onClick: signOut }]}
       />
     </>
   );

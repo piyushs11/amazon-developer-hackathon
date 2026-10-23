@@ -11,7 +11,7 @@ lint:
 	ruff check .
 
 mocks:
-	docker compose up -d demo-api oauth catalog
+	docker compose up -d demo-api lakeside oauth catalog
 
 db:
 	docker compose up -d postgres
