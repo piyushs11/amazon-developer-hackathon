@@ -27,16 +27,22 @@ SYSTEM_PROMPT = """\
 You are Alexa+, a voice assistant. The user asks for something that may need one of the tools \
 below. Each tool belongs to a business service, named in [brackets].
 
-- If the request fits a tool, call exactly one tool. Take the arguments from what the user said \
-or from the known values; never invent ids, names, numbers or times.
-- If a required value is missing and is not a known value, do not call a tool: reply with one \
-short question asking for it.
-- If the request needs no tool (a greeting, thanks, something unrelated), reply in one short \
+How to decide:
+1. If the request fits a tool, call that tool right away. Prefer calling a tool over asking a \
+question. Pick the tool whose description matches what the user wants, and the service the user \
+named (if they did not name one and only one service fits, use it).
+2. Browsing, listing and searching ("what is on the menu", "show me the bouquets", "what do you \
+have", "any pasta?") are tool calls: call the search or list tool. If the user gave no keyword, \
+leave the query out; the tool then returns everything. Never ask the user for a keyword.
+3. Take argument values only from what the user said or from the known values. Never invent \
+ids, names, numbers or times. Only if a value the tool truly needs (an id, a time, a name to \
+book under) is missing, do not call it; reply with one short question for that value.
+4. If the request needs no tool (a greeting, thanks, something unrelated), reply in one short \
 sentence and say what you can help with.
-- Never say that an action was done. Actions only happen after you call a tool and the user \
-confirms.
-- Replies are plain text, under 25 words, with no markdown."""
+5. Never say an action was done. Actions only happen after a tool is called and the user confirms.
 
+Output format: do not explain your reasoning and do not write <thinking> tags. Either call a tool, \
+or reply in plain text under 25 words with no markdown and no tags."""
 
 @dataclass
 class Routed:
@@ -74,6 +80,15 @@ def get_client():
     return _client
 
 
+_THINK = re.compile(r"<thinking>.*?(</thinking>|\Z)", re.IGNORECASE | re.DOTALL)
+_TAGS = re.compile(r"</?\s*(thinking|response|answer|reply)\s*>", re.IGNORECASE)
+
+
+def clean_text(text: str) -> str:
+    """The model's reply without any reasoning it wrote out (<thinking>...</thinking>) or tags."""
+    return _TAGS.sub("", _THINK.sub("", text)).strip()
+
+
 def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_") or "service"
 
@@ -106,6 +121,11 @@ def build_tools(services: list) -> tuple[list[dict], dict[str, tuple]]:
                 description += " Example requests: " + " | ".join(f'"{p}"' for p in phrases)
             props = {p["name"]: _param_schema(tool, p) for p in tool.params}
             required = [p["name"] for p in tool.params if p["required"]]
+            if tool.read_only and required == ["query"]:
+                # a search: with no keyword it lists everything (the engine fills in the empty
+                # query), so the model must not feel it has to ask for one
+                required = []
+                description += " Leave `query` out to list everything."
             schema = {"type": "object", "properties": props}
             if required:
                 schema["required"] = required
@@ -166,12 +186,17 @@ def route(text: str, services: list, memory: dict | None = None, *, client=None,
     specs, index = build_tools(services)
     if not specs:
         raise LookupError("no tools to route to")
+    model_name = model or model_id()
+    extra = {}
+    if "nova" in model_name:  # AWS advises greedy decoding for Nova tool use
+        extra["additionalModelRequestFields"] = {"inferenceConfig": {"topK": 1}}
     reply = (client or get_client()).converse(
-        modelId=model or model_id(),
+        modelId=model_name,
         system=[{"text": _system(memory)}],
         messages=[{"role": "user", "content": [{"text": text}]}],
         toolConfig={"tools": specs, "toolChoice": {"auto": {}}},
         inferenceConfig={"maxTokens": 400, "temperature": 0},
+        **extra,
     )
     blocks = reply["output"]["message"]["content"]
     for block in blocks:
@@ -184,7 +209,7 @@ def route(text: str, services: list, memory: dict | None = None, *, client=None,
         service, tool = picked
         log.info("assistant llm routed %r -> %s/%s", text[:60], service.name, tool.name)
         return Routed(service, tool, clean_args(tool, use.get("input")))
-    message = " ".join(b["text"].strip() for b in blocks if b.get("text")).strip()
+    message = clean_text(" ".join(b["text"] for b in blocks if b.get("text")))
     if not message:
         raise ValueError("the model returned neither a tool call nor text")
     return Routed(message=message[:MAX_REPLY_CHARS])

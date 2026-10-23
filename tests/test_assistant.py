@@ -277,3 +277,27 @@ def test_tool_names_are_unique_and_bedrock_safe():
     names = [s["toolSpec"]["name"] for s in specs]
     assert len(names) == len(set(names)) == len(index)
     assert all(re.fullmatch(r"[A-Za-z0-9_-]{1,64}", n) for n in names)
+
+
+def test_llm_thinking_text_never_reaches_the_user(llm_on):
+    llm_on(StubBedrock(text="<thinking>The user said thanks. I will reply briefly.</thinking>\nYou're welcome!"))
+    out = FakeWorld().ask("thanks")
+    assert out["reply"] == "You're welcome!"
+
+
+def test_llm_reply_that_is_only_thinking_falls_back_to_the_rules(llm_on):
+    llm_on(StubBedrock(text="<thinking>I need a query to search the menu."))
+    world = FakeWorld()
+    world.ask("what pasta does Demo Bistro have")
+    assert world.calls == [("search_menu", {"query": "pasta"})]
+
+
+def test_llm_search_query_is_optional_for_the_model(llm_on):
+    from backend.app.assistant import llm
+
+    specs, _ = llm.build_tools(SERVICES)
+    search = next(s["toolSpec"] for s in specs if s["toolSpec"]["name"].endswith("__search_menu"))
+    assert "required" not in search["inputSchema"]["json"]
+    assert "list everything" in search["description"]
+    order = next(s["toolSpec"] for s in specs if s["toolSpec"]["name"].endswith("__get_order_status"))
+    assert order["inputSchema"]["json"]["required"] == ["order_id"]  # real ids stay required
