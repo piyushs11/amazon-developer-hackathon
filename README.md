@@ -120,3 +120,7 @@ scripts/       e2e_check.py
 infra/         Dockerfile, Dockerfile.web (Caddy + built app), Caddyfile, deploy.sh
 docs/          architecture.md, demo-script.md
 ```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
