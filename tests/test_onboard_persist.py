@@ -1,6 +1,7 @@
 import ast
 import asyncio
 import shutil
+from pathlib import Path
 
 import pytest
 
@@ -81,8 +82,10 @@ def test_unparseable_source_is_never_stored(seeded, tmp_path):
 MAPPED = {
     "service_uuid": UUID, "service_name": "Demo Bistro", "base_url": "http://x",
     "endpoints": [
-        {"endpoint_id": "get_order_status", "tool_name": "get_order_status", "read_only": True},
-        {"endpoint_id": "place_order", "tool_name": "place_order", "read_only": False},
+        {"endpoint_id": "get_order_status", "tool_name": "get_order_status", "read_only": True,
+         "method": "GET", "path_template": "/orders/status", "description": "Get order status", "params": []},
+        {"endpoint_id": "place_order", "tool_name": "place_order", "read_only": False,
+         "method": "POST", "path_template": "/orders", "description": "Place an order", "params": []},
     ],
 }
 
@@ -107,7 +110,7 @@ def test_onboard_end_to_end(cache, tmp_path, monkeypatch, second, expected):
     assert out["status"] == expected
     files = storage.read_bundle(out["bundle_path"])
     assert ("place_order.py" in files) == (expected == "ok")
-    assert f"/{UUID}/{out['version']}" in out["bundle_path"]
+    assert f"/{UUID}/{out['version']}" in Path(out["bundle_path"]).as_posix()
 
 
 def test_onboard_step_errors(cache, tmp_path, monkeypatch):

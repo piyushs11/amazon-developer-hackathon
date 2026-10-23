@@ -259,7 +259,8 @@ def test_service_uuid_is_carried_from_generate_through_verify(cache, tmp_path, m
     monkeypatch.setattr(fo, "generate", fake_generate)
     monkeypatch.setattr(fo, "verify_service", fake_verify)
     mapped = {"service_uuid": UUID, "service_name": "Demo Bistro",
-              "endpoints": [{"endpoint_id": "get_order_status", "tool_name": "get_order_status"}]}
+              "endpoints": [{"endpoint_id": "get_order_status", "tool_name": "get_order_status",
+                             "method": "GET", "path_template": "/orders/status"}]}
     asyncio.run(fo.onboard(mapped, str(tmp_path / "o"), cache=cache, storage=LocalStorage(tmp_path / "s")))
     assert seen["service_uuid"] == UUID
 

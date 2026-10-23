@@ -24,8 +24,10 @@ FAIL = {"status": "fail", "detail": "Tool: place_order\nError: 404"}
 MAPPED = {
     "service_uuid": UUID, "service_name": "Demo Bistro", "base_url": "http://x",
     "endpoints": [
-        {"endpoint_id": "get_order_status", "tool_name": "get_order_status", "read_only": True},
-        {"endpoint_id": "place_order", "tool_name": "place_order", "read_only": False},
+        {"endpoint_id": "get_order_status", "tool_name": "get_order_status", "read_only": True,
+         "method": "GET", "path_template": "/orders/status", "description": "Get order status", "params": []},
+        {"endpoint_id": "place_order", "tool_name": "place_order", "read_only": False,
+         "method": "POST", "path_template": "/orders", "description": "Place an order", "params": []},
     ],
 }
 
@@ -120,7 +122,7 @@ def test_all_tools_verified_is_ok(cache, storage, stubbed):
     assert isinstance(out, GenerationResult)
     assert out.status == "ok" and out.errors == []
     assert out.tools == ["get_order_status", "place_order"]
-    assert f"/{UUID}/" in out.bundle_path
+    assert f"/{UUID}/" in Path(out.bundle_path).as_posix()
     files = storage.read_bundle(out.bundle_path)
     assert set(files) == {"get_order_status.py", "place_order.py", "demo_bistro_tools.py"}
 
