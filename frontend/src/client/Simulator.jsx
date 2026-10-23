@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import NotBuilt from '../components/NotBuilt.jsx';
 import Switch from '../components/Switch.jsx';
 import { useToast } from '../components/Toast.jsx';
 import Icon from '../lib/Icon.jsx';
@@ -10,12 +9,14 @@ import { useClient } from './clientState.jsx';
 import { DB } from './mockBackend.js';
 import ToolsPanel from './ToolsPanel.jsx';
 
+const TABS = [['ask', 'Ask'], ['tools', 'Tools']];
+
 // The Alexa+ simulator. Ask mode understands requests for any of the user's live services
 // (POST /assistant/ask, which calls the gateway); Tools mode is the
 // plain MCP client (pick a tool, fill its input_schema, call it).
 // opts: { send } asks a question on open, { listen } starts the mic, { mode: 'tools', uuid }.
 export default function Simulator({ opts }) {
-  const { backend, me, traceOn, setTraceOn, voiceOn, setVoiceOn, closeLayer, chatFor, rememberSim } = useClient();
+  const { backend, me, voiceOn, setVoiceOn, closeLayer, chatFor, rememberSim } = useClient();
   const navigate = useNavigate();
   const toast = useToast();
   const [chat] = useState(() => chatFor(me));
@@ -67,6 +68,19 @@ export default function Simulator({ opts }) {
     closeLayer();
     navigate(backend.live || backend.link(me.id, DB) ? '/client/services' : `/client/services/${DB}`);
   };
+  // Arrow keys, Home and End move between the Ask / Tools tabs.
+  const onTabKey = (e) => {
+    const i = TABS.findIndex(([id]) => id === mode);
+    let next = null;
+    if (e.key === 'ArrowRight') next = (i + 1) % TABS.length;
+    else if (e.key === 'ArrowLeft') next = (i + TABS.length - 1) % TABS.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = TABS.length - 1;
+    if (next === null) return;
+    e.preventDefault();
+    setMode(TABS[next][0]);
+    document.getElementById('sim-tab-' + TABS[next][0])?.focus();
+  };
   const submit = (e) => {
     e.preventDefault();
     const v = text;
@@ -77,34 +91,39 @@ export default function Simulator({ opts }) {
   return (
     <div className="full">
       <div className="inner">
-        <div className="app-top" style={{ position: 'relative' }}>
-          <button type="button" className="btn-icon btn" aria-label="Close" onClick={closeLayer}><Icon name="chevron-down" /></button>
-          <div className="title">Alexa<span className="sub">Alexa+ · {me.name}{backend.live && <> <NotBuilt id="llm_routing" label="No LLM" /></>}</span></div>
-          <button type="button" ref={moreRef} className="btn-icon btn" aria-label="Options" onClick={() => setMenuOpen((o) => !o)}><Icon name="more" /></button>
+        <div className="app-top sim-top">
+          <button type="button" className="btn-icon btn plain" aria-label="Close" onClick={closeLayer}><Icon name="chevron-down" /></button>
+          <div className="title">Alexa+<span className="sub">{me.name}</span></div>
+          <button type="button" ref={moreRef} className="btn-icon btn plain" aria-label="Options" aria-expanded={menuOpen} onClick={() => setMenuOpen((o) => !o)}><Icon name="more" /></button>
           {menuOpen && (
             <div className="kebab-menu" ref={menuRef}>
-              <label><span>Show tool calls</span><Switch on={traceOn} onChange={setTraceOn} /></label>
               <label><span>Read replies aloud</span><Switch on={voiceOn} onChange={onVoice} /></label>
               <button type="button" onClick={clear}>Clear</button>
             </div>
           )}
         </div>
-        <div className="seg" role="tablist">
-          <button type="button" role="tab" aria-selected={mode === 'ask'} onClick={() => setMode('ask')}>Ask</button>
-          <button type="button" role="tab" aria-selected={mode === 'tools'} onClick={() => setMode('tools')}>Tools</button>
+        <div className="sim-tabs" role="tablist" aria-label="Mode" onKeyDown={onTabKey}>
+          {TABS.map(([id, label]) => (
+            <button
+              type="button" role="tab" key={id} id={'sim-tab-' + id}
+              aria-selected={mode === id} aria-controls={'sim-panel-' + id} tabIndex={mode === id ? 0 : -1}
+              onClick={() => setMode(id)}
+            >{label}</button>
+          ))}
         </div>
-        <ChatView session={chat} showTrace={traceOn} onNeedLink={toServices} hidden={mode !== 'ask'} />
-        <div className="tools-panel" hidden={mode !== 'tools'}>
+        <div className="sim-panel" role="tabpanel" id="sim-panel-ask" aria-labelledby="sim-tab-ask" hidden={mode !== 'ask'}>
+          <ChatView session={chat} onNeedLink={toServices} hidden={mode !== 'ask'} />
+          <form className="chat-foot" hidden={mode !== 'ask'} onSubmit={submit}>
+            <div className="ask">
+              <input ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask Alexa" autoComplete="off" aria-label="Ask Alexa" />
+              <button type="button" className={'btn-icon btn plain' + (listening ? ' listening' : '')} aria-label="Speak" onClick={startListening}><Icon name="mic" /></button>
+              <button type="submit" className="btn-icon btn send" aria-label="Send" disabled={!text.trim()}><Icon name="send" /></button>
+            </div>
+          </form>
+        </div>
+        <div className="tools-panel" role="tabpanel" id="sim-panel-tools" aria-labelledby="sim-tab-tools" hidden={mode !== 'tools'}>
           {mode === 'tools' && <ToolsPanel key={toolsKey} preset={opts.uuid} />}
         </div>
-        <form className="chat-foot" hidden={mode !== 'ask'} onSubmit={submit}>
-          <div className="ask">
-            <span className="orb"></span>
-            <input ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} placeholder="Ask Alexa" autoComplete="off" aria-label="Ask Alexa" />
-            <button type="button" className={'btn-icon btn' + (listening ? ' listening' : '')} aria-label="Speak" onClick={startListening}><Icon name="mic" /></button>
-            <button type="submit" className="btn-icon btn send" aria-label="Send" disabled={!text.trim()}><Icon name="send" /></button>
-          </div>
-        </form>
       </div>
     </div>
   );

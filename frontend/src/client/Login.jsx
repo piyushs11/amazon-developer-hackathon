@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import NotBuilt from '../components/NotBuilt.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { MOCK } from '../lib/config.js';
 import { sleep } from '../lib/utils.js';
@@ -61,8 +60,7 @@ export default function Login() {
         <div className="error" hidden={!(error || loadError)} style={{ color: 'var(--error)', fontSize: 13 }}>{error || loadError}</div>
         <button type="submit" className="btn btn-primary btn-lg btn-block" disabled={busy}>{busy ? 'Signing in...' : 'Continue'}</button>
         <p className="small muted">
-          Demo sign-in, no password. You get a user token, and every call to a service's MCP URL carries it so the gateway knows it's you.{' '}
-          <NotBuilt id="alexa_account_linking" />
+          Demo sign-in, no password. You get a user token, and every call to a service's MCP URL carries it so the gateway knows it's you.
         </p>
       </form>
     </div>

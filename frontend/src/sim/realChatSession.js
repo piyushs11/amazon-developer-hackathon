@@ -2,7 +2,6 @@
 // renders either), but every turn goes to POST /assistant/ask, which picks a tool of any of the
 // user's live services from their example phrases, asks before writes, calls it through the
 // gateway with the user's token and answers with the business's own templates.
-import { mcpUrl } from '../data/manifest.js';
 import { fmtDateTime, sleep } from '../lib/utils.js';
 import { speak } from './speech.js';
 
@@ -10,7 +9,7 @@ let nextId = 1;
 
 /**
  * @param {object} o
- * @param {string} o.userId                       shown in the call trace
+ * @param {string} o.userId
  * @param {(text, pending, memory) => Promise} o.ask   POST /assistant/ask as this user
  * @param {() => string[]} o.starters              first suggestions (phrases of live services)
  * @param {string} [o.intro]
@@ -61,19 +60,7 @@ export function createRealChatSession({ userId, ask, starters, intro, linkButton
     pending = out.pending || null;
     memory = out.memory || memory;
     const call = out.call;
-    if (call) {
-      push({
-        kind: 'trace', tool: call.tool, service: call.service_name, isError: call.is_error, ms: call.ms,
-        lines: [
-          'POST ' + mcpUrl(call.service_uuid) + ' · tools/call',
-          'user_id: ' + (out.user_id || userId) + ' (from the user token)',
-          'arguments: ' + JSON.stringify(call.arguments),
-          'upstream: called by the gateway with ' + (out.user_id || userId) + "'s " + call.service_name + ' token → '
-            + (call.status ?? (call.is_error ? 'error' : 'ok')),
-        ],
-      });
-      if (config.onToolCall) config.onToolCall(call);
-    }
+    if (call && config.onToolCall) config.onToolCall(call);
     let extra = null;
     if (out.kind === 'confirm') extra = { type: 'confirm' };
     else if (out.link && linkButton) extra = { type: 'link' };

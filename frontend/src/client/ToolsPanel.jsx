@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import ResultCard from '../components/ResultCard.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { MOCK } from '../lib/config.js';
 import { mcpUrl } from '../data/manifest.js';
@@ -100,7 +101,7 @@ export default function ToolsPanel({ preset }) {
       </div>
       {tool && (
         <>
-          <div className="tool-pick" role="group" aria-label="Tool" style={{ marginTop: 14 }}>
+          <div className="tool-pick" role="group" aria-label="Tool">
             {defs.map((t) => (
               <button type="button" className="chip" key={t.name} aria-pressed={t.name === tool.name} onClick={() => setToolName(t.name)}>{t.name}</button>
             ))}
@@ -109,25 +110,21 @@ export default function ToolsPanel({ preset }) {
         </>
       )}
 
-      <div className="section-h" style={{ paddingTop: 24 }}>Results</div>
+      <div className="section-h">Results</div>
       <div className="stack">
         {results.length ? results.slice(0, 6).map((r, i) => (
-          <div className="res-card" key={results.length - i}>
-            <div className="hd">
-              <span>{r.tool} · {r.svc}</span>
-              <span className={'status ' + (r.is_error ? 'err' : 'ok')} style={{ fontFamily: 'var(--font-text)', fontWeight: 400, fontSize: 13 }}>{r.is_error ? 'is_error' : 'ok'}</span>
-            </div>
-            <div className="rw"><span className="k">Arguments</span><pre>{JSON.stringify(r.arguments, null, 2)}</pre></div>
-            <div className="rw"><span className="k">Gateway</span><pre>{'POST ' + r.url + '\nuser_id: ' + r.user + ' (from the user token)'}</pre></div>
-            <div className="rw"><span className="k">Upstream</span><pre>{r.request ? r.request.method + ' ' + r.request.url + '\n→ ' + r.status : r.upstream || 'Not called'}</pre></div>
-            <div className="rw">
-              <span className="k">Alexa says</span>
-              <div className="row" style={{ alignItems: 'flex-start', gap: 8 }}>
-                <span className="ans grow">{r.text}</span>
-                <button type="button" className="btn-icon btn sm" aria-label="Read aloud" onClick={() => readAloud(r.text)}><Icon name="speaker" cls="s" /></button>
-              </div>
-            </div>
-          </div>
+          <ResultCard
+            key={results.length - i}
+            title={r.tool + ' · ' + r.svc}
+            ok={!r.is_error}
+            text={r.text}
+            onSpeak={() => readAloud(r.text)}
+            rows={[
+              { label: 'Arguments', value: JSON.stringify(r.arguments, null, 2) },
+              { label: 'Gateway', value: 'POST ' + r.url + '\nuser_id: ' + r.user + ' (from the user token)' },
+              { label: 'Upstream', value: r.request ? r.request.method + ' ' + r.request.url + '\n→ ' + r.status : r.upstream || 'Not called' },
+            ]}
+          />
         )) : (
           <p className="empty">Each call shows the tool, its arguments, which user the gateway resolved, the request sent to the service, and the answer Alexa would speak.</p>
         )}
@@ -167,7 +164,7 @@ function ToolForm({ tool, onCall, busy }) {
 
   return (
     <form className="tform" onSubmit={submit}>
-      <div className="row wrap" style={{ gap: 8 }}><b>{tool.title}</b><RwTag tool={tool} /></div>
+      <div className="tool-title"><b>{tool.title}</b><RwTag tool={tool} /></div>
       {tool.params.length ? tool.params.map((p) => {
         const id = 'f_' + p.name;
         const label = <label htmlFor={id}>{p.name}<span className="opt">{p.in}{p.required ? '' : ' · optional'}</span></label>;
@@ -186,7 +183,7 @@ function ToolForm({ tool, onCall, busy }) {
                   </div>
                 ))}
               </div>
-              <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setDishes((l) => [...l, { name: 'Mango Lassi', qty: 1 }])}>
+              <button type="button" className="btn btn-ghost btn-sm add-dish" onClick={() => setDishes((l) => [...l, { name: 'Mango Lassi', qty: 1 }])}>
                 <Icon name="plus" />Add a dish
               </button>
             </div>
@@ -226,7 +223,7 @@ function ToolForm({ tool, onCall, busy }) {
         )}
       </div>
 
-      <button type="submit" className="btn btn-primary btn-lg" disabled={busy}><Icon name="play" />{busy ? 'Calling...' : 'tools/call ' + tool.name}</button>
+      <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Calling...' : 'Call ' + tool.name}</button>
     </form>
   );
 }

@@ -28,7 +28,6 @@ export function ClientProvider({ children }) {
   const [who, setWho] = useState(null);
   const [restoring, setRestoring] = useState(() => !!savedUser());
   const [query, setQuery] = useState('');
-  const [traceOn, setTraceOn] = useState(true);
   const [voiceOn, setVoiceOn] = useState(false);
   // One full-screen layer at a time: the service's sign-in window, the publish screen or the simulator.
   const [layer, setLayer] = useState(null);
@@ -66,8 +65,6 @@ export function ClientProvider({ children }) {
     signOut: () => { setLayer(null); saveUser(null); setWho(null); },
     query,
     setQuery,
-    traceOn,
-    setTraceOn,
     voiceOn,
     setVoiceOn,
     layer,

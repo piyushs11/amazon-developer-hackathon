@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ResultCard from '../components/ResultCard.jsx';
 import { useToast } from '../components/Toast.jsx';
 import Icon from '../lib/Icon.jsx';
 import { fill } from '../lib/templates.js';
@@ -40,20 +41,17 @@ export default function TrySimulator({ s }) {
       </div>
       <TryForm key={tool.name} tool={tool} onCall={call} busy={busy} />
       {results.map((r, i) => (
-        <div className="card stack-s" key={results.length - i}>
-          <div className="row between wrap">
-            <b><code>{r.tool}</code></b>
-            <span className={'status ' + (r.is_error ? 'err' : 'ok')}>{r.status} {r.is_error ? 'error' : 'ok'}</span>
-          </div>
-          <div className="small muted">{r.request.method} {r.request.url} · as {r.account}</div>
-          <div className="row" style={{ alignItems: 'flex-start', gap: 8 }}>
-            <div className="speak grow"><span className="lbl">Alexa says</span>{r.text}</div>
-            <button type="button" className="btn-icon btn sm" aria-label="Read aloud" onClick={() => (canSpeak() ? speak(r.text) : toast("Speech isn't available in this browser.", 'err'))}>
-              <Icon name="speaker" cls="s" />
-            </button>
-          </div>
-          <details><summary className="small">Response data</summary><pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{JSON.stringify(r.data, null, 2)}</pre></details>
-        </div>
+        <ResultCard
+          key={results.length - i}
+          title={r.tool}
+          ok={!r.is_error}
+          text={r.text}
+          onSpeak={() => (canSpeak() ? speak(r.text) : toast("Speech isn't available in this browser.", 'err'))}
+          rows={[
+            { label: 'Request', value: r.request.method + ' ' + r.request.url + '\n→ ' + r.status + ' · as ' + r.account },
+            { label: 'Response data', value: JSON.stringify(r.data, null, 2) },
+          ]}
+        />
       ))}
     </div>
   );
@@ -91,7 +89,7 @@ function TryForm({ tool, onCall, busy }) {
           </div>
         </div>
       )}
-      <div><button type="submit" className="btn btn-primary" disabled={busy}><Icon name="play" />{busy ? 'Calling...' : 'Call ' + tool.name}</button></div>
+      <div><button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Calling...' : 'Call ' + tool.name}</button></div>
     </form>
   );
 }

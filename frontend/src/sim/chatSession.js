@@ -2,7 +2,6 @@
 // Plain JS (no React) so a session can outlive the component showing it: the client app keeps
 // one per user while the simulator opens and closes. ChatView subscribes to it.
 import { TOOLS } from '../data/tools.js';
-import { SERVICE_UUID, mcpUrl } from '../data/manifest.js';
 import { fmtDateTime, money, sleep } from '../lib/utils.js';
 import { callTool, fill } from './demoBistro.js';
 import { classify } from './nlu.js';
@@ -16,7 +15,7 @@ let nextId = 1;
  * @param {object} o
  * @param {object} o.acct        fake Demo Bistro account the calls run against
  * @param {'client'|'review'} o.mode
- * @param {string} o.userId      shown in the call trace
+ * @param {string} o.userId
  * @param {string} [o.intro]     first thing Alexa says
  * @param {boolean} [o.linkButton] offer an "Open Services" button when the service isn't usable
  */
@@ -43,19 +42,6 @@ export function createChatSession({ acct, mode, userId, intro, linkButton = fals
     if (config.voice) speak(text, 1.02);
   }
 
-  function trace(r) {
-    const who = mode === 'review' ? 'reviewer (test account)' : userId + ' (from the user token)';
-    push({
-      kind: 'trace', tool: r.tool, isError: r.is_error, ms: 90 + Math.round(Math.random() * 260),
-      lines: [
-        'POST ' + mcpUrl(SERVICE_UUID) + ' · tools/call',
-        'user_id: ' + who,
-        'arguments: ' + JSON.stringify(r.arguments),
-        'upstream: ' + r.request.method + ' ' + r.request.url + ' → ' + r.status,
-      ],
-    });
-  }
-
   async function thinking(ms) {
     const id = push({ kind: 'thinking' });
     await sleep(ms || 650);
@@ -70,7 +56,6 @@ export function createChatSession({ acct, mode, userId, intro, linkButton = fals
 
   function run(name, args) {
     const r = callTool(name, args, acct);
-    trace(r);
     if (config.onToolCall) config.onToolCall(r);
     if (name === 'search_menu' && !r.is_error && r.data.count) return alexa(r.text, { type: 'items', items: r.data.items });
     if (name === 'place_order' && !r.is_error) { acct.last = r.data.order_id; return alexa(r.text, { type: 'receipt' }); }

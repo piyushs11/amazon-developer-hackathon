@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Row2 } from '../components/ConsoleShell.jsx';
-import NotBuilt from '../components/NotBuilt.jsx';
 import { mcpUrl } from '../data/manifest.js';
 import { toDate } from '../lib/portal.js';
 import { fmtDate, fmtDateTime } from '../lib/utils.js';
@@ -63,7 +62,6 @@ export default function Catalog() {
         <p className="muted">
           Every bundle speaks MCP (2025-11-25, 2025-06-18) over Streamable HTTP on the shared gateway and must load cleanly before it is marked active.
           Calls carry the user's token; the gateway reads that user's access token for the service, refreshes it when it expires, and calls the owner's API.
-          {' '}Alexa+ registration <NotBuilt id="alexa_registration" label="mocked" />
         </p>
       </div></div>
     </ReviewShell>

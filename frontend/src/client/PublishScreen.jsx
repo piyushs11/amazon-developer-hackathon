@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import NotBuilt from '../components/NotBuilt.jsx';
 import { useToast } from '../components/Toast.jsx';
 import { mcpUrl } from '../data/manifest.js';
 import Icon from '../lib/Icon.jsx';
@@ -91,7 +90,7 @@ export default function PublishScreen({ uuid }) {
                   return (
                     <li key={label} className={st}>
                       <span className="ic"><Icon name={st === 'fail' ? 'x' : 'check'} /></span>
-                      <span>{label}{label === 'Registering' && <> <NotBuilt id="alexa_registration" label="Mocked" /></>}<span className="s">{sub}</span></span>
+                      <span>{label}<span className="s">{sub}</span></span>
                     </li>
                   );
                 })}

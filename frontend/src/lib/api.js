@@ -34,9 +34,6 @@ export const demoLogin = (username) => request('POST', '/auth/demo-login', { bod
 // Accounts offered on a sign-in screen: role user | owner | reviewer.
 export const demoUsers = (role = 'user') => request('GET', '/auth/demo-users?role=' + encodeURIComponent(role));
 
-// What is not built yet (GET /features), for the "Not built yet" badges.
-export const features = () => request('GET', '/features');
-
 // A signed-in session for one account: request() with its token, signing in again on a 401.
 export function session(profile) {
   let current = profile;

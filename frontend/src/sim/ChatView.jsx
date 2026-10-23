@@ -1,5 +1,4 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
-import Icon from '../lib/Icon.jsx';
 import { money } from '../lib/utils.js';
 
 function AlexaExtra({ extra, session, onNeedLink }) {
@@ -38,7 +37,7 @@ function AlexaExtra({ extra, session, onNeedLink }) {
 }
 
 // Renders a chat session: the conversation log plus the suggestion chips.
-export default function ChatView({ session, showTrace = true, onNeedLink, hidden }) {
+export default function ChatView({ session, onNeedLink, hidden }) {
   const snap = useSyncExternalStore(session.subscribe, session.getSnapshot);
   const logRef = useRef(null);
 
@@ -47,7 +46,7 @@ export default function ChatView({ session, showTrace = true, onNeedLink, hidden
       if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
     });
     return () => cancelAnimationFrame(id);
-  }, [snap.items, showTrace, hidden]);
+  }, [snap.items, hidden]);
 
   return (
     <div className="chat grow" hidden={hidden}>
@@ -56,18 +55,6 @@ export default function ChatView({ session, showTrace = true, onNeedLink, hidden
           if (it.kind === 'stamp') return <div className="chat-stamp" key={it.id}>{it.text}</div>;
           if (it.kind === 'user') return <div className="msg user" key={it.id}>{it.text}</div>;
           if (it.kind === 'thinking') return <div className="thinking" key={it.id}><i></i><i></i><i></i></div>;
-          if (it.kind === 'trace') {
-            if (!showTrace) return null;
-            return (
-              <div className="trace" key={it.id}>
-                <div className="hd">
-                  <Icon name="bolt" /><b>{it.tool}</b> · {it.service || 'Demo Bistro'} · {it.ms} ms{' '}
-                  {it.isError ? <span className="err">is_error</span> : <span className="ok">ok</span>}
-                </div>
-                {it.lines.map((l) => <div className="ln" key={l}>{l}</div>)}
-              </div>
-            );
-          }
           return (
             <div className="msg alexa" key={it.id}>
               {it.text}

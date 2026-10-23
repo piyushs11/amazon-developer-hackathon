@@ -10,12 +10,18 @@
          -> call the tool through the gateway (the user's own upstream token)
          -> answer with the business's speakable/empty/error templates
 
-An LLM router can replace `match` later (ASSISTANT=llm, a plan stretch goal); the rest stays.
+With ASSISTANT=llm, an LLM (llm.py, Bedrock) replaces `match` and `extract`: it picks the tool and
+fills in the arguments. Access checks, the confirmation for writes, the gateway call and the
+templates stay exactly as above, and any LLM failure falls back to the rules for that turn.
 """
+import logging
 import re
 from dataclasses import dataclass, field
 
+from backend.app.assistant import llm
 from backend.app.assistant.speech import first_list, list_names, render, speak
+
+log = logging.getLogger(__name__)
 
 STOPWORDS = frozenset({
     "a", "an", "the", "at", "to", "of", "for", "from", "in", "on", "with", "and", "or", "is", "are",
@@ -325,7 +331,18 @@ def answer(*, text: str, pending: dict | None, memory: dict, services: list[Serv
         names = list_names([s.name for s in live]) or "your services"
         return reply(f"Hi! I can help with {names}. Try one of these.", "none")
 
-    found = match(text, services, memory)
+    found, llm_args = None, None
+    if services and llm.enabled():
+        try:
+            routed = llm.route(text, services, memory)
+        except Exception as e:  # noqa: BLE001 - any LLM problem: use the rule-based matcher this turn
+            log.warning("assistant llm routing failed (%s: %s); using the rules", type(e).__name__, e)
+        else:
+            if routed.tool is None:  # small talk, or the model asks for a missing value
+                return reply(routed.message, "none")
+            found, llm_args = (routed.service, routed.tool, 0.0), routed.args
+    if found is None:
+        found = match(text, services, memory)
     if found is None:
         if not live:
             return reply("You don't have any services on Alexa+ yet. Connect and publish one in MCP Bridge.",
@@ -343,7 +360,18 @@ def answer(*, text: str, pending: dict | None, memory: dict, services: list[Serv
     if blocked:
         return reply(blocked, "blocked", link=True, service_uuid=service.uuid)
 
-    args, missing = extract(text, service, tool, memory, call)
+    if llm_args is not None:
+        args = dict(llm_args)
+        for p in tool.params:
+            if p["name"] in args or not p["required"]:
+                continue
+            if p["name"] in memory:  # "where is my order" -> the order placed a moment ago
+                args[p["name"]] = memory[p["name"]]
+            elif _is_list_tool(tool):  # "show me the menu": a search with no keywords
+                args[p["name"]] = ""
+        missing = [p for p in tool.params if p["required"] and args.get(p["name"]) is None]
+    else:
+        args, missing = extract(text, service, tool, memory, call)
     if missing:
         p = missing[0]
         example = (tool.profile.get("example_phrases") or [""])[0]

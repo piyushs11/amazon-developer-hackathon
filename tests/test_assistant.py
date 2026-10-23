@@ -4,6 +4,7 @@ Uses the real catalog specs (their phrases and templates) and a fake `call` that
 the mock APIs, so no database or network is needed.
 """
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -161,3 +162,118 @@ def test_manifest_service_arguments(text, tool, args):
     assert found.name == tool
     got, missing = engine.extract(text, service, found, {}, lambda *_: {"data": {}})
     assert not missing and got == args
+
+
+# ---- ASSISTANT=llm: Bedrock picks the tool, the rest of the engine is unchanged ----
+
+class StubBedrock:
+    """Answers like Converse: a scripted tool call or text; records what it was sent."""
+
+    def __init__(self, tool=None, args=None, text="", fail=None):
+        self.tool, self.args, self.text, self.fail = tool, args or {}, text, fail
+        self.sent = []
+
+    def converse(self, **kw):
+        self.sent.append(kw)
+        if self.fail:
+            raise self.fail
+        if self.tool:
+            name = next(t["toolSpec"]["name"] for t in kw["toolConfig"]["tools"]
+                        if t["toolSpec"]["name"].endswith("__" + self.tool))
+            block = {"toolUse": {"toolUseId": "t1", "name": name, "input": self.args}}
+        else:
+            block = {"text": self.text}
+        return {"output": {"message": {"role": "assistant", "content": [block]}}}
+
+
+@pytest.fixture
+def llm_on(monkeypatch):
+    from backend.app.assistant import llm
+
+    monkeypatch.setenv("ASSISTANT", "llm")
+
+    def use(stub):
+        monkeypatch.setattr(llm, "_client", stub)
+        return stub
+
+    return use
+
+
+def test_llm_picks_the_tool_and_the_engine_still_asks_before_a_write(llm_on):
+    stub = llm_on(StubBedrock("place_order", {"item": "Tiramisu", "quantity": "2", "junk": "x"}))
+    world = FakeWorld()
+    out = world.ask("get me a couple of tiramisus")
+    assert out["kind"] == "confirm" and out["reply"] == "Should I order 2 × Tiramisu from Demo Bistro?"
+    assert out["pending"]["arguments"] == {"item": "Tiramisu", "quantity": 2}  # typed, junk dropped
+    assert world.calls == []  # nothing ran yet
+    assert stub.sent[0]["toolConfig"]["toolChoice"] == {"auto": {}}
+    done = world.ask("yes", pending=out["pending"], memory=out["memory"])
+    assert ("place_order", {"item": "Tiramisu", "quantity": 2}) in world.calls
+    assert done["reply"].startswith("Done. Order A2001")
+
+
+def test_llm_read_tool_answers_with_the_business_template(llm_on):
+    llm_on(StubBedrock("search_menu", {"query": "pasta"}))
+    world = FakeWorld()
+    out = world.ask("anything italian and carb-heavy?")
+    assert world.calls == [("search_menu", {"query": "pasta"})]
+    assert out["reply"].startswith("I found 1 dishes at Demo Bistro")
+
+
+def test_llm_search_with_no_keywords_still_runs(llm_on):
+    llm_on(StubBedrock("search_menu", {}))
+    world = FakeWorld()
+    world.ask("show me the menu")
+    assert world.calls == [("search_menu", {"query": ""})]
+
+
+def test_llm_uses_remembered_ids_and_tells_the_model_about_them(llm_on):
+    stub = llm_on(StubBedrock("get_order_status", {}))
+    world = FakeWorld()
+    out = world.ask("where is my order", memory={"order_id": "A2001"})
+    assert world.calls[-1] == ("get_order_status", {"order_id": "A2001"})
+    assert "out for delivery" in out["reply"]
+    assert "order_id = A2001" in stub.sent[0]["system"][0]["text"]
+
+
+def test_llm_missing_required_value_is_asked_for(llm_on):
+    llm_on(StubBedrock("get_order_status", {"order_id": "  "}))
+    out = FakeWorld().ask("where is my order")
+    assert out["kind"] == "clarify" and "order" in out["reply"].lower()
+
+
+def test_llm_plain_reply_is_returned_without_a_tool_call(llm_on):
+    llm_on(StubBedrock(text="You're welcome! I can help with Demo Bistro."))
+    world = FakeWorld()
+    out = world.ask("thanks a lot")
+    assert out["kind"] == "none" and out["reply"].startswith("You're welcome") and world.calls == []
+
+
+def test_llm_choice_of_a_blocked_service_explains_why(llm_on):
+    llm_on(StubBedrock("next_available", {}))
+    out = FakeWorld().ask("when can I get my teeth cleaned")
+    assert out["kind"] == "blocked" and "connect Lakeside Dental" in out["reply"]
+
+
+def test_llm_failure_falls_back_to_the_rules(llm_on):
+    llm_on(StubBedrock(fail=RuntimeError("ThrottlingException")))
+    world = FakeWorld()
+    out = world.ask("what pasta does Demo Bistro have")
+    assert world.calls == [("search_menu", {"query": "pasta"})]
+    assert out["reply"].startswith("I found 1 dishes at Demo Bistro")
+
+
+def test_rules_are_the_default(monkeypatch):
+    from backend.app.assistant import llm
+
+    monkeypatch.delenv("ASSISTANT", raising=False)
+    assert not llm.enabled()
+
+
+def test_tool_names_are_unique_and_bedrock_safe():
+    from backend.app.assistant import llm
+
+    specs, index = llm.build_tools(SERVICES + SERVICES)  # the same services twice
+    names = [s["toolSpec"]["name"] for s in specs]
+    assert len(names) == len(set(names)) == len(index)
+    assert all(re.fullmatch(r"[A-Za-z0-9_-]{1,64}", n) for n in names)
