@@ -58,8 +58,8 @@ class FakeWorld:
             return {"data": {"booking_id": "BK300", **args}, "is_error": False, "text": ""}
         return {"data": {}, "is_error": False, "text": "ok"}
 
-    def ask(self, text, pending=None, memory=None):
-        return engine.answer(text=text, pending=pending, memory=memory or {}, services=SERVICES,
+    def ask(self, text, pending=None, memory=None, services=None):
+        return engine.answer(text=text, pending=pending, memory=memory or {}, services=services or SERVICES,
                              access=self.access, call=self.call)
 
 
@@ -230,7 +230,7 @@ def test_llm_search_with_no_keywords_still_runs(llm_on):
 def test_llm_uses_remembered_ids_and_tells_the_model_about_them(llm_on):
     stub = llm_on(StubBedrock("get_order_status", {}))
     world = FakeWorld()
-    out = world.ask("where is my order", memory={"order_id": "A2001"})
+    out = world.ask("where is my order", memory={"ids": {BISTRO.uuid: {"order_id": "A2001"}}})
     assert world.calls[-1] == ("get_order_status", {"order_id": "A2001"})
     assert "out for delivery" in out["reply"]
     assert "order_id = A2001" in stub.sent[0]["system"][0]["text"]
@@ -301,3 +301,306 @@ def test_llm_search_query_is_optional_for_the_model(llm_on):
     assert "list everything" in search["description"]
     order = next(s["toolSpec"] for s in specs if s["toolSpec"]["name"].endswith("__get_order_status"))
     assert order["inputSchema"]["json"]["required"] == ["order_id"]  # real ids stay required
+
+
+# ---- conversation memory: recent turns + a rolling summary (history.py) ----
+
+class ScriptedBedrock:
+    """Routes with the next scripted tool call; answers summary requests (no toolConfig)."""
+
+    def __init__(self, calls, summary="SUMMARY", fail_summary=False):
+        self.calls, self.summary, self.fail_summary = list(calls), summary, fail_summary
+        self.routed, self.summarised = [], []
+
+    def converse(self, **kw):
+        if "toolConfig" not in kw:  # the summariser
+            self.summarised.append(kw)
+            if self.fail_summary:
+                raise RuntimeError("ThrottlingException")
+            return {"output": {"message": {"role": "assistant", "content": [{"text": self.summary}]}}}
+        self.routed.append(kw)
+        tool, args = self.calls.pop(0)
+        name = next(t["toolSpec"]["name"] for t in kw["toolConfig"]["tools"]
+                    if t["toolSpec"]["name"].endswith("__" + tool))
+        block = {"toolUse": {"toolUseId": "t", "name": name, "input": args}}
+        return {"output": {"message": {"role": "assistant", "content": [block]}}}
+
+
+def test_model_gets_the_earlier_turns_so_follow_ups_resolve(llm_on):
+    stub = llm_on(ScriptedBedrock([("search_menu", {"query": "dessert"}),
+                                   ("place_order", {"item": "Tiramisu", "quantity": 2})]))
+    world = FakeWorld()
+    first = world.ask("anything in dessert?")
+    out = world.ask("okay order 2 for me", memory=first["memory"])
+    assert out["kind"] == "confirm" and "2 × Tiramisu" in out["reply"]  # no "what would you like?"
+    sent = stub.routed[1]["messages"]
+    assert [m["role"] for m in sent] == ["user", "assistant", "user"]
+    assert sent[0]["content"][0]["text"] == "anything in dessert?"
+    assert "[ran Demo Bistro/search_menu" in sent[1]["content"][0]["text"]
+    assert sent[2]["content"][0]["text"] == "okay order 2 for me"
+
+
+def test_old_turns_are_folded_into_a_summary_and_sent_as_context(llm_on):
+    from backend.app.assistant import history
+
+    stub = llm_on(ScriptedBedrock([("search_menu", {})] * 5, summary="User browsed the menu."))
+    world, memory = FakeWorld(), {}
+    for i in range(4):
+        memory = world.ask(f"show me the menu {i}", memory=memory)["memory"]
+    assert stub.summarised, "the oldest messages should have been summarised"
+    assert memory["_summary"] == "User browsed the menu."
+    assert len(history.recent(memory)) <= history.TRIGGER
+    world.ask("and again", memory=memory)
+    assert "Summary of the earlier conversation: User browsed the menu." in stub.routed[-1]["system"][0]["text"]
+    assert len(stub.routed[-1]["messages"]) <= history.TRIGGER + 1
+
+
+def test_a_failed_summary_never_breaks_the_turn(llm_on):
+    llm_on(ScriptedBedrock([("search_menu", {})] * 4, fail_summary=True))
+    world, memory = FakeWorld(), {}
+    for i in range(4):
+        out = world.ask(f"menu please {i}", memory=memory)
+        assert out["kind"] == "answer"
+        memory = out["memory"]
+    assert "Earlier the user asked" in memory["_summary"]
+
+
+def test_memory_bookkeeping_is_not_a_known_value_or_tool_argument(llm_on):
+    stub = llm_on(ScriptedBedrock([("search_menu", {}), ("get_order_status", {})]))
+    world = FakeWorld()
+    first = world.ask("show me the menu", memory={"ids": {BISTRO.uuid: {"order_id": "A2001"}}})
+    world.ask("where is my order", memory=first["memory"])
+    system = stub.routed[1]["system"][0]["text"]
+    assert "order_id = A2001" in system and "_recent" not in system and "_summary" not in system
+    assert world.calls[-1] == ("get_order_status", {"order_id": "A2001"})
+
+
+def test_history_messages_alternate_and_start_with_the_user():
+    from backend.app.assistant import history
+
+    memory = {"_recent": [{"role": "assistant", "text": "Hi"}, {"role": "user", "text": "a"},
+                          {"role": "user", "text": "b"}, {"role": "assistant", "text": "c"},
+                          {"role": "bogus", "text": "x"}, "junk"]}
+    roles = [m["role"] for m in history.messages(memory, "now")]
+    assert roles == ["user", "assistant", "user"]
+    assert history.messages({}, "hello") == [{"role": "user", "content": [{"text": "hello"}]}]
+
+
+def test_rules_mode_keeps_no_history(monkeypatch):
+    monkeypatch.delenv("ASSISTANT", raising=False)
+    out = FakeWorld().ask("what pasta does Demo Bistro have")
+    assert "_recent" not in out["memory"] and "_summary" not in out["memory"]
+
+
+# ---- one conversation, several services ----
+
+class MultiWorld(FakeWorld):
+    """Like FakeWorld, but every call is recorded with the service it went to."""
+
+    def call(self, service, tool, args):
+        if service.name == "Lakeside Dental" and tool.name == "next_available":
+            self.calls.append((service.name, tool.name, args))
+            return {"data": {"slots": [{"slot_id": "slot_0914", "time": "9:00 AM"}]}, "is_error": False, "text": "ok"}
+        if service.name == "Lakeside Dental" and tool.name == "book_appointment":
+            self.calls.append((service.name, tool.name, args))
+            return {"data": {"appointment_id": "apt_900", **args}, "is_error": False, "text": "ok"}
+        res = super().call(service, tool, args)
+        self.calls[-1] = (service.name, *self.calls[-1])
+        return res
+
+
+def _delivery() -> engine.ServiceInfo:
+    """A second service whose tool also takes an `order_id`, to prove ids stay with their service."""
+    twin = BISTRO.tools[1]  # get_order_status
+    profile = dict(twin.profile, example_args={"order_id": "D77"}, example_phrases=[
+        p.replace("Demo Bistro", "Quick Delivery") for p in twin.profile["example_phrases"]])
+    tool = engine.ToolInfo("get_order_status", twin.title, twin.description, True, twin.params, profile)
+    return engine.ServiceInfo("dddddddd-0000-0000-0000-000000000001", "Quick Delivery",
+                              {"phrases": ["track my delivery"]}, [tool])
+
+
+BOTH = ("Demo Bistro", "Lakeside Dental")
+
+
+def test_one_conversation_moves_between_services_and_back():
+    world, memory = MultiWorld(live=BOTH), {}
+    out = world.ask("what pasta does Demo Bistro have", memory=memory)
+    assert world.calls == [("Demo Bistro", "search_menu", {"query": "pasta"})]
+    assert out["reply"].startswith("I found 1 dishes at Demo Bistro")
+    assert out["via"] == {"service": "Demo Bistro", "tool": "search_menu", "switched": False}
+
+    out = world.ask("when is the next cleaning at Lakeside Dental", memory=out["memory"])  # -> Dental
+    assert world.calls[-1] == ("Lakeside Dental", "next_available", {"visit_type": "cleaning"})
+    assert out["kind"] == "answer" and out["reply"].startswith("Lakeside Dental:")  # says where it came from
+    assert out["via"] == {"service": "Lakeside Dental", "tool": "next_available", "switched": True}
+
+    out = world.ask("what dessert does Demo Bistro have", memory=out["memory"])  # -> back to the Bistro
+    assert world.calls[-1] == ("Demo Bistro", "search_menu", {"query": "dessert"})
+    assert "Demo Bistro" in out["reply"] and out["via"]["switched"] is True
+    assert [c[0] for c in world.calls] == ["Demo Bistro", "Lakeside Dental", "Demo Bistro"]
+
+
+def test_each_service_remembers_its_own_ids_across_switches():
+    world = MultiWorld(live=BOTH)
+    order = world.ask("order 2 tiramisu from Demo Bistro")
+    done = world.ask("yes", pending=order["pending"], memory=order["memory"])
+    booking = world.ask("book slot_0914 at Lakeside Dental", memory=done["memory"])
+    assert booking["kind"] == "confirm" and booking["pending"]["service_uuid"] == DENTAL.uuid
+    booked = world.ask("yes", pending=booking["pending"], memory=booking["memory"])
+    assert booked["memory"]["ids"] == {BISTRO.uuid: {"order_id": "A2001"}, DENTAL.uuid: {"appointment_id": "apt_900", "slot_id": "slot_0914"}}
+    follow = world.ask("where is my Demo Bistro order", memory=booked["memory"])
+    assert world.calls[-1] == ("Demo Bistro", "get_order_status", {"order_id": "A2001"})
+    assert "out for delivery" in follow["reply"]
+
+
+def test_ids_do_not_leak_into_another_services_tool():
+    delivery = _delivery()
+    services = SERVICES + [delivery]
+    world = MultiWorld(live=("Demo Bistro", "Quick Delivery"))
+    order = world.ask("order 2 tiramisu from Demo Bistro", services=services)
+    done = world.ask("yes", pending=order["pending"], memory=order["memory"], services=services)
+    assert done["memory"]["ids"] == {BISTRO.uuid: {"order_id": "A2001"}}
+    before = len(world.calls)
+    out = world.ask("what is the status of my Quick Delivery order", memory=done["memory"], services=services)
+    assert out["kind"] == "clarify" and "Order ID" in out["reply"]  # it must ask, not reuse A2001
+    assert len(world.calls) == before  # nothing was sent to either service
+    out = world.ask("where is my Demo Bistro order", memory=done["memory"], services=services)
+    assert world.calls[-1] == ("Demo Bistro", "get_order_status", {"order_id": "A2001"})
+    assert "out for delivery" in out["reply"]
+
+
+def test_memory_from_the_client_is_validated():
+    world = MultiWorld()
+    for junk in ({"ids": "oops"}, {"ids": {BISTRO.uuid: "x", 5: {}}}, {"_last_service": 7, "_choose": "x"}):
+        assert world.ask("what pasta does Demo Bistro have", memory=junk)["kind"] == "answer"
+
+
+@pytest.mark.parametrize("state, words", [
+    ("not_connected", "connect Lakeside Dental"), ("expired", "reconnect"),
+    ("not_published", "isn't published"), ("off", "switched off"),
+])
+def test_switch_to_a_service_that_is_not_usable_is_blocked_and_the_chat_continues(state, words):
+    world = MultiWorld(live=("Demo Bistro",), states={"Lakeside Dental": state})
+    first = world.ask("what pasta does Demo Bistro have")
+    out = world.ask("when is the next cleaning at Lakeside Dental", memory=first["memory"])
+    assert out["kind"] == "blocked" and words in out["reply"] and out["link"]
+    assert out["service"]["name"] == "Lakeside Dental"
+    assert [c[0] for c in world.calls] == ["Demo Bistro"]  # no Dental call, no fallback to the Bistro
+    # the previous service is still the one used last, and the conversation goes on
+    again = world.ask("what dessert does Demo Bistro have", memory=out["memory"])
+    assert again["kind"] == "answer" and world.calls[-1][0] == "Demo Bistro"
+
+
+def test_a_confirmation_is_dropped_when_the_user_changes_topic():
+    world = MultiWorld(live=BOTH)
+    for said, service, tool in [
+        ("okay book a dentist appointment", "Lakeside Dental", "book_appointment"),  # starts with "okay"
+        ("cancel my Lakeside Dental appointment apt_5521", "Lakeside Dental", "cancel_appointment"),
+        ("no, what pasta does Demo Bistro have", "Demo Bistro", "search_menu"),
+    ]:
+        order = world.ask("order 2 tiramisu from Demo Bistro")
+        assert order["kind"] == "confirm" and order["pending"]["tool"] == "place_order"
+        world.calls.clear()
+        out = world.ask(said, pending=order["pending"], memory=order["memory"])
+        assert out["pending"] is None or out["pending"]["service_uuid"] == next(
+            s.uuid for s in SERVICES if s.name == service)
+        assert not any(c[1] == "place_order" for c in world.calls)  # the Bistro order never ran
+        assert out["via"]["service"] == service and out["via"]["tool"] == tool
+        assert out["kind"] in ("confirm", "clarify", "answer")  # the new request was routed, not "Okay, I won't"
+
+
+@pytest.mark.parametrize("said", ["yes", "Yes", "yes please", "ok", "sure thing".replace(" thing", ""), "go ahead"])
+def test_a_plain_yes_still_confirms_the_pending_action(said):
+    world = MultiWorld(live=BOTH)
+    order = world.ask("order 2 tiramisu from Demo Bistro")
+    out = world.ask(said, pending=order["pending"], memory=order["memory"])
+    assert ("Demo Bistro", "place_order", {"item": "Tiramisu", "quantity": 2}) in world.calls
+    assert out["reply"] == "Demo Bistro: Done. Order A2001: 2 × Tiramisu. It should be ready in about 30 minutes."
+
+
+@pytest.mark.parametrize("said", ["no", "No thanks", "cancel", "never mind", "stop"])
+def test_a_plain_no_cancels_the_pending_action(said):
+    world = MultiWorld(live=BOTH)
+    order = world.ask("order 2 tiramisu from Demo Bistro")
+    out = world.ask(said, pending=order["pending"], memory=order["memory"])
+    assert out["reply"] == "Okay, I won't do that." and not any(c[1] == "place_order" for c in world.calls)
+
+
+def test_a_confirmation_for_a_service_that_went_offline_is_not_run():
+    order = MultiWorld(live=BOTH).ask("order 2 tiramisu from Demo Bistro")
+    world = MultiWorld(live=("Lakeside Dental",), states={"Demo Bistro": "expired"})  # expired meanwhile
+    out = world.ask("yes", pending=order["pending"], memory=order["memory"])
+    assert out["kind"] == "blocked" and "reconnect" in out["reply"] and world.calls == []
+
+
+def test_ambiguous_service_name_asks_which_and_the_answer_runs_the_request():
+    world = MultiWorld(live=("Demo Bistro", "Lakeside Dental", "Lakeside Grill"))
+    ask = world.ask("book an appointment at lakeside")
+    assert ask["kind"] == "clarify" and world.calls == []
+    assert ask["reply"] in ("Do you mean Lakeside Dental or Lakeside Grill?", "Do you mean Lakeside Grill or Lakeside Dental?")
+    out = world.ask("the dental one", memory=ask["memory"])  # runs the original request, on Dental only
+    assert out["via"]["service"] == "Lakeside Dental" and out["via"]["tool"] == "book_appointment"
+    assert "_choose" not in out["memory"]
+    ask = world.ask("book a time at lakeside")
+    out = world.ask("grill", memory=ask["memory"])
+    assert out["via"]["service"] == "Lakeside Grill" and out["via"]["tool"] == "book_table"
+    assert world.calls == []  # both still need details before anything runs
+
+
+def test_just_a_shared_name_asks_which_then_waits_for_the_task():
+    world = MultiWorld(live=("Lakeside Dental", "Lakeside Grill"))
+    ask = world.ask("lakeside")
+    assert ask["kind"] == "clarify" and "Do you mean" in ask["reply"]
+    out = world.ask("dental", memory=ask["memory"])
+    assert out["reply"] == "Okay, Lakeside Dental. What would you like to do?" and world.calls == []
+    assert world.ask("when is the next cleaning", memory=out["memory"])["via"]["service"] == "Lakeside Dental"
+
+
+def test_ignoring_the_which_question_starts_a_new_request():
+    world = MultiWorld(live=("Demo Bistro", "Lakeside Dental", "Lakeside Grill"))
+    ask = world.ask("lakeside")
+    out = world.ask("what pasta does Demo Bistro have", memory=ask["memory"])
+    assert out["via"]["service"] == "Demo Bistro" and "_choose" not in out["memory"]
+
+
+def test_a_clear_request_is_not_ambiguous_even_with_a_shared_name_word():
+    world = MultiWorld(live=("Demo Bistro", "Lakeside Dental", "Lakeside Grill"))
+    assert world.ask("what are the specials at lakeside")["via"]["service"] == "Lakeside Grill"
+    assert world.ask("when is the next cleaning at Lakeside Dental")["via"]["service"] == "Lakeside Dental"
+
+
+def test_the_last_service_only_breaks_an_exact_tie():
+    delivery = _delivery()
+    services = SERVICES + [delivery]
+    world = MultiWorld(live=("Demo Bistro", "Quick Delivery"))
+    phrase = "what's the status of my order"
+    assert engine.score(phrase, BISTRO, BISTRO.tools[1]) == engine.score(phrase, delivery, delivery.tools[0])
+    asked = world.ask(phrase, services=services)  # no history: ask which
+    assert asked["kind"] == "clarify" and "Quick Delivery" in asked["reply"] and "Demo Bistro" in asked["reply"]
+    for last, expected in [(delivery.uuid, "Quick Delivery"), (BISTRO.uuid, "Demo Bistro")]:
+        out = world.ask(phrase, memory={"_last_service": last}, services=services)
+        assert out["via"]["service"] == expected
+    # ...but what the user says beats the last service
+    out = world.ask("where is my Demo Bistro order", memory={"_last_service": delivery.uuid}, services=services)
+    assert out["via"]["service"] == "Demo Bistro"
+
+
+def test_llm_routes_each_turn_to_the_service_the_user_asks_for(llm_on):
+    stub = llm_on(ScriptedBedrock([("search_menu", {"query": "pasta"}), ("next_available", {"visit_type": "cleaning"}),
+                                   ("search_menu", {})]))
+    world, memory = MultiWorld(live=BOTH), {}
+    for said in ["what pasta do you have", "when can I get my teeth cleaned", "back to the menu"]:
+        out = world.ask(said, memory=memory)
+        memory = out["memory"]
+    assert [c[0] for c in world.calls] == ["Demo Bistro", "Lakeside Dental", "Demo Bistro"]
+    assert "The service used last was Demo Bistro" in stub.routed[1]["system"][0]["text"]
+    names = [t["toolSpec"]["name"] for t in stub.routed[1]["toolConfig"]["tools"]]
+    assert any(n.startswith("demo_bistro__") for n in names) and any(n.startswith("lakeside_dental__") for n in names)
+
+
+def test_llm_known_ids_are_labelled_with_their_service(llm_on):
+    stub = llm_on(ScriptedBedrock([("get_order_status", {})]))
+    memory = {"ids": {BISTRO.uuid: {"order_id": "A2001"}, DENTAL.uuid: {"appointment_id": "apt_900"}}}
+    MultiWorld(live=BOTH).ask("where is my order", memory=memory)
+    system = stub.routed[0]["system"][0]["text"]
+    assert "[Demo Bistro] order_id = A2001" in system and "[Lakeside Dental] appointment_id = apt_900" in system

@@ -199,11 +199,33 @@ def data_driven(client: httpx.Client, alice: dict, bob: dict) -> None:
     check(out["kind"] == "confirm" and out["pending"]["arguments"] == {"item": "Tiramisu", "quantity": 2},
           "a write asks first, with the arguments filled in", out)
     done = ask(client, alice, "yes", out["pending"], out["memory"])
-    check(done.get("call", {}).get("tool") == "place_order" and done["reply"].startswith("Done."),
+    check(done.get("call", {}).get("tool") == "place_order" and "Done." in done["reply"],
           "yes -> place_order runs", done.get("reply"))
-    out = ask(client, alice, "when is the next cleaning at Lakeside Dental")
+    out = ask(client, alice, "when is the next cleaning at Lakeside Dental", None, done["memory"])
     check(out.get("call", {}).get("tool") == "next_available", "Lakeside Dental works in Ask mode",
           out.get("reply"))
+
+    print("8b. Ask mode: one conversation across services (Bistro -> Dental -> Bistro)")
+    out = ask(client, alice, "what pasta does Demo Bistro have")
+    check(out.get("via", {}).get("service") == "Demo Bistro" and out.get("call", {}).get("tool") == "search_menu",
+          "turn 1 -> Demo Bistro search_menu", out.get("via"))
+    out = ask(client, alice, "when is the next cleaning at Lakeside Dental", None, out["memory"])
+    check(out.get("via") == {"service": "Lakeside Dental", "tool": "next_available", "switched": True}
+          and out["reply"].startswith("Lakeside Dental:"),
+          "turn 2 -> switches to Lakeside Dental, and says so", out.get("via"))
+    memory = out["memory"]
+    out = ask(client, alice, "what dessert does Demo Bistro have", None, memory)
+    check(out.get("via", {}).get("service") == "Demo Bistro" and out["via"]["switched"] is True,
+          "turn 3 -> back to Demo Bistro", out.get("via"))
+    order = ask(client, alice, "order a margherita pizza from Demo Bistro", None, out["memory"])
+    check(order["kind"] == "confirm", "a write is pending at the Bistro", order.get("reply"))
+    out = ask(client, alice, "okay book a dentist appointment", order["pending"], order["memory"])
+    check(out.get("via", {}).get("service") == "Lakeside Dental" and out["pending"] is None
+          and out.get("call", {}).get("tool") != "place_order",
+          "changing topic drops the pending order (no accidental place_order)", out.get("reply"))
+    out = ask(client, alice, "where is my Demo Bistro order", None, {"ids": {DENTAL: {"order_id": "ZZZ"}}})
+    check(out["kind"] == "clarify" and not out.get("call"),
+          "an id remembered for Lakeside Dental is not used for a Demo Bistro tool", out.get("reply"))
     out = ask(client, bob, "what are the specials at Lakeside Grill")
     check(out["kind"] == "blocked" and "connect" in out["reply"].lower(),
           "a service bob never connected -> 'please connect'", out.get("reply"))

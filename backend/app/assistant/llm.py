@@ -17,6 +17,8 @@ import os
 import re
 from dataclasses import dataclass, field
 
+from backend.app.assistant import history
+
 log = logging.getLogger(__name__)
 
 MAX_TOOLS = 60
@@ -34,12 +36,17 @@ named (if they did not name one and only one service fits, use it).
 2. Browsing, listing and searching ("what is on the menu", "show me the bouquets", "what do you \
 have", "any pasta?") are tool calls: call the search or list tool. If the user gave no keyword, \
 leave the query out; the tool then returns everything. Never ask the user for a keyword.
-3. Take argument values only from what the user said or from the known values. Never invent \
-ids, names, numbers or times. Only if a value the tool truly needs (an id, a time, a name to \
+3. Use the conversation so far to understand short follow-ups ("order 2", "anything more in \
+dessert?", "the same again", "my order"): fill the arguments from what was just discussed. Take \
+argument values only from the conversation or the known values. Never invent ids, names, \
+numbers or times. Only if a value the tool truly needs (an id, a time, a name to \
 book under) is missing, do not call it; reply with one short question for that value.
-4. If the request needs no tool (a greeting, thanks, something unrelated), reply in one short \
+4. The user can switch between services at any time. Go by what they ask for now, not by the \
+service used before. If the request could fit tools of two different services equally well and \
+they did not say which, do not guess: reply with one short question naming the services.
+5. If the request needs no tool (a greeting, thanks, something unrelated), reply in one short \
 sentence and say what you can help with.
-5. Never say an action was done. Actions only happen after a tool is called and the user confirms.
+6. Never say an action was done. Actions only happen after a tool is called and the user confirms.
 
 Output format: do not explain your reasoning and do not write <thinking> tags. Either call a tool, \
 or reply in plain text under 25 words with no markdown and no tags."""
@@ -171,17 +178,30 @@ def clean_args(tool, raw: dict | None) -> dict:
     return out
 
 
-def _system(memory: dict | None) -> str:
-    known = {k: v for k, v in (memory or {}).items() if isinstance(v, (str, int)) and str(v)}
-    if not known:
-        return SYSTEM_PROMPT
-    lines = "\n".join(f"- {k} = {v}" for k, v in known.items())
-    return (SYSTEM_PROMPT + "\n\nKnown values from earlier in this conversation (use them when "
-            "the user says things like \"my order\"):\n" + lines)
+def _system(memory: dict | None, services=(), prefer=None) -> str:
+    """The prompt, plus what the model should know: ids remembered from each service's own answers
+    (kept per service so one service's id is never offered to another's tool), the service used
+    last, and the summary of the earlier conversation."""
+    known = []
+    for svc in services:
+        mine = ((memory or {}).get("ids") or {}).get(svc.uuid)
+        for k, v in (mine.items() if isinstance(mine, dict) else []):
+            if isinstance(v, (str, int)) and str(v):
+                known.append(f"- [{svc.name}] {k} = {v}")
+    out = SYSTEM_PROMPT
+    if known:
+        out += ("\n\nKnown values from earlier in this conversation (use one only for a tool of the "
+                "service in [brackets], when the user says things like \"my order\"):\n" + "\n".join(known))
+    if prefer is not None:
+        out += (f"\n\nThe service used last was {prefer.name}. Prefer it only when the request fits "
+                "several services equally well.")
+    if history.context(memory):
+        out += "\n\n" + history.context(memory)
+    return out
 
 
 def route(text: str, services: list, memory: dict | None = None, *, client=None,
-          model=None) -> Routed:
+          model=None, prefer=None) -> Routed:
     """Ask the model what to do with `text`. Raises on any LLM problem (the caller falls back)."""
     specs, index = build_tools(services)
     if not specs:
@@ -192,8 +212,8 @@ def route(text: str, services: list, memory: dict | None = None, *, client=None,
         extra["additionalModelRequestFields"] = {"inferenceConfig": {"topK": 1}}
     reply = (client or get_client()).converse(
         modelId=model_name,
-        system=[{"text": _system(memory)}],
-        messages=[{"role": "user", "content": [{"text": text}]}],
+        system=[{"text": _system(memory, services, prefer)}],
+        messages=history.messages(memory, text),
         toolConfig={"tools": specs, "toolChoice": {"auto": {}}},
         inferenceConfig={"maxTokens": 400, "temperature": 0},
         **extra,
@@ -213,3 +233,30 @@ def route(text: str, services: list, memory: dict | None = None, *, client=None,
     if not message:
         raise ValueError("the model returned neither a tool call nor text")
     return Routed(message=message[:MAX_REPLY_CHARS])
+
+
+SUMMARY_PROMPT = """\
+You keep the memory of a conversation between a user and a voice assistant. You get the previous \
+summary (maybe empty) and the next messages. Write the new summary: one plain-text paragraph \
+under 100 words, no markdown, no tags, no reasoning. Keep what matters for later turns: what the \
+user wants, which business or service is in use, dishes, items, quantities and ids mentioned, \
+anything shown or offered, orders placed with their ids, and any question still open. Drop \
+greetings and wording."""
+
+
+def summarise(previous: str, old: list[dict], *, client=None, model=None) -> str:
+    """Fold `old` messages into the running summary. Raises on any LLM problem (the caller then
+    folds crudely, see history.record)."""
+    lines = "\n".join(f"{'User' if m['role'] == 'user' else 'Alexa'}: {m['text']}" for m in old)
+    prompt = f"Previous summary: {previous or '(none)'}\n\nNew messages:\n{lines}"
+    reply = (client or get_client()).converse(
+        modelId=model or model_id(),
+        system=[{"text": SUMMARY_PROMPT}],
+        messages=[{"role": "user", "content": [{"text": prompt}]}],
+        inferenceConfig={"maxTokens": 250, "temperature": 0},
+    )
+    blocks = reply["output"]["message"]["content"]
+    out = clean_text(" ".join(b["text"] for b in blocks if b.get("text")))
+    if not out:
+        raise ValueError("the model returned an empty summary")
+    return out

@@ -10,15 +10,22 @@
          -> call the tool through the gateway (the user's own upstream token)
          -> answer with the business's speakable/empty/error templates
 
+One conversation can use several services. Every turn is routed by what the user says, not by
+the service used last (that one only breaks an exact tie); each tool runs against its own service
+through the gateway with the user's own token; ids remembered from answers are kept per service
+(`memory["ids"][service_uuid]`) so one service's order_id is never offered to another's tool; a
+pending yes/no belongs to its service and is dropped when the user changes topic.
+
 With ASSISTANT=llm, an LLM (llm.py, Bedrock) replaces `match` and `extract`: it picks the tool and
 fills in the arguments. Access checks, the confirmation for writes, the gateway call and the
 templates stay exactly as above, and any LLM failure falls back to the rules for that turn.
 """
+import json
 import logging
 import re
 from dataclasses import dataclass, field
 
-from backend.app.assistant import llm
+from backend.app.assistant import history, llm
 from backend.app.assistant.speech import first_list, list_names, render, speak
 
 log = logging.getLogger(__name__)
@@ -34,10 +41,27 @@ STOPWORDS = frozenset({
 })
 NUMBER_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
                 "seven": 7, "eight": 8, "nine": 9, "ten": 10, "dozen": 12, "couple": 2}
-YES = re.compile(r"^\s*(y|yes|yeah|yep|sure|ok|okay|go ahead|confirm|do it|please do)\b", re.IGNORECASE)
-NO = re.compile(r"^\s*(n|no|nope|cancel|stop|don't|do not|never mind)\b", re.IGNORECASE)
+# A reply to "Should I ...?" is only a yes/no when that is the whole message: "okay book a dentist
+# appointment" or "cancel my dental appointment" are new requests, not answers.
+YES = re.compile(r"(y|yes|yeah|yep|sure|ok|okay|go ahead|confirm|do it|please do|sounds good)"
+                 r"( (please|thanks|thank you|do it|go ahead|that|it|confirm))*")
+NO = re.compile(r"(n|no|nope|cancel|stop|don't|do not|never mind|nevermind)"
+                r"( (thanks|thank you|please|that|it|do it|cancel|stop))*")
+IDS_KEY = "ids"  # memory: {service_uuid: {order_id: "A2001"}}
+LAST_KEY = "_last_service"  # memory: uuid of the service used last (only a tie-breaker)
+CHOOSE_KEY = "_choose"  # memory: {"text": the request, "uuids": the services we asked about}
+AMBIGUOUS_MARGIN = 1.0  # "Lakeside": services whose best tool scores within this are all possible
+TIE = 0.05  # otherwise two services must score (almost) exactly the same to be ambiguous
 TIME = re.compile(r"\b(\d{1,2}(?::\d{2})?\s?(?:am|pm))\b", re.IGNORECASE)
 MIN_SCORE = 1.5
+
+
+def is_yes(text: str) -> bool:
+    return bool(YES.fullmatch(" ".join(words(text))))
+
+
+def is_no(text: str) -> bool:
+    return bool(NO.fullmatch(" ".join(words(text))))
 
 
 def words(text: str) -> list[str]:
@@ -141,14 +165,91 @@ def score(text: str, service: ServiceInfo, tool: ToolInfo, memory: dict | None =
     return total + (2.0 if named else 0.0)
 
 
+def _rank(text: str, services: list[ServiceInfo], memory: dict | None = None
+          ) -> list[tuple[float, int, ServiceInfo, ToolInfo]]:
+    return sorted(((score(text, s, t, ids_for(memory, s)), i, s, t) for i, s in enumerate(services) for t in s.tools),
+                  key=lambda r: (-r[0], r[1]))
+
+
 def match(text: str, services: list[ServiceInfo], memory: dict | None = None
           ) -> tuple[ServiceInfo, ToolInfo, float] | None:
-    ranked = sorted(((score(text, s, t, memory), i, s, t) for i, s in enumerate(services) for t in s.tools),
-                    key=lambda x: (-x[0], x[1]))
+    """The best (service, tool) for `text`, or None when nothing fits. See `pick` for the version
+    that notices ambiguity between services."""
+    ranked = _rank(text, services, memory)
     if not ranked or ranked[0][0] < MIN_SCORE:
         return None
     best, _, service, tool = ranked[0]
     return service, tool, best
+
+
+@dataclass
+class Pick:
+    found: tuple[ServiceInfo, ToolInfo, float] | None = None
+    ask: list[ServiceInfo] = field(default_factory=list)  # services to ask the user to choose from
+    shared: bool = False  # the ambiguity is a shared name word ("Lakeside"), not a tie of scores
+
+
+def _name_stems(service: ServiceInfo) -> set[str]:
+    return {_stem(w) for w in content_words(service.name)}
+
+
+def pick(text: str, services: list[ServiceInfo], memory: dict | None = None, prefer: str | None = None) -> Pick:
+    """Which service and tool the user means, by what they said.
+
+    The service used last (`prefer`, a uuid) never overrides the words: it only settles a tie
+    between services that fit equally well. If it cannot, the user is asked which service.
+      - "Lakeside" shares a word with two service names and names neither in full: the services
+        whose best tool is within AMBIGUOUS_MARGIN of the top are all possible.
+      - otherwise services must score exactly alike to be ambiguous.
+    """
+    said = {_stem(w) for w in content_words(text)}
+    best: dict[str, tuple[float, int, ServiceInfo, ToolInfo]] = {}
+    for r in _rank(text, services, memory):
+        best.setdefault(r[2].uuid, r)
+    per = list(best.values())  # best tool of each service, best first
+    if not per:
+        return Pick()
+    group = [s for s in services if _name_stems(s) & said]
+    shared = len(group) >= 2 and not any(_name_stems(s) <= said for s in group)
+    if shared:
+        per = [r for r in per if r[2].uuid in {s.uuid for s in group}]
+    top = per[0][0]
+    if not shared and top < MIN_SCORE:
+        return Pick()
+    tied = [r for r in per if top - r[0] <= (AMBIGUOUS_MARGIN if shared else TIE)]
+    if len(tied) > 1:
+        preferred = next((r for r in tied if r[2].uuid == prefer), None)
+        if preferred and top >= MIN_SCORE:
+            return Pick(found=(preferred[2], preferred[3], preferred[0]))
+        return Pick(ask=[r[2] for r in tied], shared=shared)
+    if top < MIN_SCORE:
+        return Pick()
+    return Pick(found=(per[0][2], per[0][3], top))
+
+
+def _picked_service(text: str, cands: list[ServiceInfo]) -> ServiceInfo | None:
+    """The one of `cands` the user's answer to "Do you mean A or B?" names, by the words that tell
+    them apart ("the dental one" -> Lakeside Dental). None if it names none, or several."""
+    said = {_stem(w) for w in content_words(text)}
+    common = set.intersection(*(_name_stems(s) for s in cands)) if cands else set()
+    hits = [s for s in cands if (_name_stems(s) - common or _name_stems(s)) <= said]
+    return hits[0] if len(hits) == 1 else None
+
+
+# ---- ids remembered per service ----
+
+def ids_for(memory: dict | None, service: ServiceInfo) -> dict:
+    """Ids remembered from this service's own answers: {"order_id": "A2001"}."""
+    mine = ((memory or {}).get(IDS_KEY) or {}).get(service.uuid)
+    return {k: v for k, v in mine.items() if isinstance(v, str)} if isinstance(mine, dict) else {}
+
+
+def _clean_ids(raw) -> dict:
+    """The client sends memory back, so trust only its shape: {uuid: {name: str}}, small."""
+    if not isinstance(raw, dict):
+        return {}
+    return {u: {k: v for k, v in list(ids.items())[:20] if isinstance(k, str) and isinstance(v, str)}
+            for u, ids in list(raw.items())[:20] if isinstance(u, str) and isinstance(ids, dict)}
 
 
 # ---- arguments ----
@@ -284,14 +385,44 @@ def suggestions(live: list[ServiceInfo], memory: dict) -> list[str]:
     out = []
     for s in live:
         out += (s.profile.get("phrases") or [])[:2]
-    if memory.get("order_id"):
-        out.insert(0, "Where is order " + memory["order_id"])
+        if ids_for(memory, s).get("order_id"):
+            out.insert(0, "Where is order " + ids_for(memory, s)["order_id"])
     return out[:5]
 
 
 @dataclass
 class Access:
     status: str  # ok | not_connected | expired | not_published | off
+
+
+def _note(kind: str, extra: dict) -> str:
+    """What the model should know about a turn beyond the words Alexa said: the tool that ran, the
+    items shown (so "the first one" works), or that a yes/no is awaited."""
+    parts = []
+    call_info = extra.get("call")
+    if call_info:
+        args = json.dumps(call_info.get("arguments") or {}, ensure_ascii=False)
+        parts.append(f"[ran {call_info.get('service_name', '')}/{call_info['tool']} {args}]")
+    items = extra.get("items") or []
+    if items:
+        shown = ", ".join(i["name"] + (f" ({i['price']})" if i.get("price") is not None else "") for i in items[:8])
+        parts.append(f"[showed: {shown}]")
+    if kind == "confirm":
+        parts.append("[waiting for the user to say yes or no]")
+    return " ".join(parts)
+
+
+def _blocked_message(service: ServiceInfo, state: str) -> str | None:
+    return {
+        "not_connected": f"Please connect {service.name} in MCP Bridge first.",
+        "expired": f"Your {service.name} sign-in expired. Please reconnect it in MCP Bridge.",
+        "not_published": f"{service.name} isn't published yet. Publish it in MCP Bridge, then ask again.",
+        "off": f"{service.name} is switched off. Turn it on in MCP Bridge to use it.",
+    }.get(state)
+
+
+def _either(names: list[str]) -> str:
+    return ", ".join(names[:-1]) + " or " + names[-1] if len(names) > 1 else "".join(names)
 
 
 def answer(*, text: str, pending: dict | None, memory: dict, services: list[ServiceInfo],
@@ -301,8 +432,24 @@ def answer(*, text: str, pending: dict | None, memory: dict, services: list[Serv
     by_uuid = {s.uuid: s for s in services}
     live = [s for s in services if access(s).status == "ok"]
     memory = dict(memory or {})
+    memory[IDS_KEY] = _clean_ids(memory.get(IDS_KEY))
+    last = memory.get(LAST_KEY) if isinstance(memory.get(LAST_KEY), str) else None
+    choose = memory.pop(CHOOSE_KEY, None)  # an open "Do you mean A or B?" lasts one turn
+    request, scope = text, services  # what to route, and among which services
 
-    def reply(text_, kind="answer", **extra):
+    def reply(text_, kind="answer", service=None, tool=None, **extra):
+        if service is not None:
+            # With several services in play, say which one answered.
+            if kind != "blocked" and len(live) > 1 and service.name.lower() not in text_.lower():
+                text_ = f"{service.name}: {text_}"
+            extra["via"] = {"service": service.name, "tool": tool.name if tool else None,
+                            "switched": bool(last) and last != service.uuid}
+            extra["service"] = {"uuid": service.uuid, "name": service.name}
+            if kind != "blocked":
+                memory[LAST_KEY] = service.uuid
+        if llm.enabled():  # the router needs the conversation so far (history.py)
+            history.record(memory, user=text, alexa=text_, note=_note(kind, extra),
+                           summarise=llm.summarise)
         return {"reply": text_, "kind": kind, "memory": memory, "pending": None,
                 "suggestions": suggestions(live, memory), **extra}
 
@@ -311,38 +458,63 @@ def answer(*, text: str, pending: dict | None, memory: dict, services: list[Serv
         data = res.get("data") if isinstance(res.get("data"), dict) else {}
         status = data.get("status") if isinstance(data.get("status"), int) else None
         spoken = speak(tool.profile, data, is_error=res["is_error"], status=status, fallback=res.get("text", ""))
-        if not res["is_error"]:
-            memory.update(_memory_from(data))
+        if not res["is_error"] and _memory_from(data):
+            memory[IDS_KEY].setdefault(service.uuid, {}).update(_memory_from(data))
         extra = {"items": _items(data)} if not res["is_error"] else {}
-        return reply(spoken, "answer", call={
+        return reply(spoken, "answer", service=service, tool=tool, call={
             "service_uuid": service.uuid, "service_name": service.name, "tool": tool.name, "arguments": args,
             "is_error": res["is_error"], "status": status, "ms": res.get("ms"), "data": data}, **extra)
+
+    def blocked(service: ServiceInfo, state: str) -> dict | None:
+        msg = _blocked_message(service, state)
+        if msg is None:
+            return None
+        return reply(msg, "blocked", service=service, link=True, service_uuid=service.uuid)
+
+    def ask_which(options: list[ServiceInfo]) -> dict:
+        memory[CHOOSE_KEY] = {"text": request, "uuids": [s.uuid for s in options]}
+        return reply(f"Do you mean {_either([s.name for s in options])}?", "clarify")
 
     if pending:
         service = by_uuid.get(pending.get("service_uuid"))
         tool = next((t for t in (service.tools if service else []) if t.name == pending.get("tool")), None)
-        if service and tool and YES.match(text):
-            return run(service, tool, pending.get("arguments") or {})
-        if NO.match(text) or not (service and tool):
+        if service and tool and is_yes(text):
+            # Things may have changed since it was asked (disconnected, switched off).
+            return blocked(service, access(service).status) or run(service, tool, pending.get("arguments") or {})
+        if is_no(text) or not (service and tool):
             return reply("Okay, I won't do that.", "none")
-        # Anything else: drop the pending action and treat this as a new request.
+        # Anything else: the user moved on. Drop the pending action and route this as a new request.
+    elif isinstance(choose, dict):
+        options = [by_uuid[u] for u in choose.get("uuids") or [] if u in by_uuid]
+        chosen = _picked_service(text, options) if isinstance(choose.get("text"), str) else None
+        if chosen:  # "the dental one": run the request we asked about, on that service only
+            request, scope = choose["text"], [chosen]
+            if not match(request, scope, memory):
+                memory[LAST_KEY] = chosen.uuid
+                return reply(f"Okay, {chosen.name}. What would you like to do?", "clarify", service=chosen)
 
     if re.match(r"^\s*(hi|hello|hey|good (morning|evening|afternoon))\b", text, re.IGNORECASE):
         names = list_names([s.name for s in live]) or "your services"
         return reply(f"Hi! I can help with {names}. Try one of these.", "none")
 
+    # Rules first: they spot "Lakeside" (two services share the word) and, without an LLM, ties.
+    chosen_by_rules = pick(request, scope, memory, prefer=last)
+    if chosen_by_rules.ask and (chosen_by_rules.shared or not llm.enabled()):
+        return ask_which(chosen_by_rules.ask)
     found, llm_args = None, None
-    if services and llm.enabled():
+    if scope and llm.enabled():
         try:
-            routed = llm.route(text, services, memory)
+            routed = llm.route(request, scope, memory, prefer=by_uuid.get(last))
         except Exception as e:  # noqa: BLE001 - any LLM problem: use the rule-based matcher this turn
             log.warning("assistant llm routing failed (%s: %s); using the rules", type(e).__name__, e)
         else:
-            if routed.tool is None:  # small talk, or the model asks for a missing value
+            if routed.tool is None:  # small talk, a question for the user, or a missing value
                 return reply(routed.message, "none")
             found, llm_args = (routed.service, routed.tool, 0.0), routed.args
     if found is None:
-        found = match(text, services, memory)
+        if chosen_by_rules.ask:  # the LLM failed on an ambiguous request
+            return ask_which(chosen_by_rules.ask)
+        found = chosen_by_rules.found
     if found is None:
         if not live:
             return reply("You don't have any services on Alexa+ yet. Connect and publish one in MCP Bridge.",
@@ -350,37 +522,33 @@ def answer(*, text: str, pending: dict | None, memory: dict, services: list[Serv
         return reply(f"I didn't catch that. I can help with {list_names([s.name for s in live])}: "
                      f"try \"{suggestions(live, memory)[0]}\".", "none")
     service, tool, _ = found
-    state = access(service).status
-    blocked = {
-        "not_connected": f"Please connect {service.name} in MCP Bridge first.",
-        "expired": f"Your {service.name} sign-in expired. Please reconnect it in MCP Bridge.",
-        "not_published": f"{service.name} isn't published yet. Publish it in MCP Bridge, then ask again.",
-        "off": f"{service.name} is switched off. Turn it on in MCP Bridge to use it.",
-    }.get(state)
-    if blocked:
-        return reply(blocked, "blocked", link=True, service_uuid=service.uuid)
+    # A service that isn't usable gets its own message; we never fall back to another service.
+    if hit := blocked(service, access(service).status):
+        return hit
 
+    mine = ids_for(memory, service)  # only ids this service gave us
     if llm_args is not None:
         args = dict(llm_args)
         for p in tool.params:
             if p["name"] in args or not p["required"]:
                 continue
-            if p["name"] in memory:  # "where is my order" -> the order placed a moment ago
-                args[p["name"]] = memory[p["name"]]
+            if p["name"] in mine:  # "where is my order" -> the order placed a moment ago
+                args[p["name"]] = mine[p["name"]]
             elif _is_list_tool(tool):  # "show me the menu": a search with no keywords
                 args[p["name"]] = ""
         missing = [p for p in tool.params if p["required"] and args.get(p["name"]) is None]
     else:
-        args, missing = extract(text, service, tool, memory, call)
+        args, missing = extract(request, service, tool, mine, call)
     if missing:
         p = missing[0]
         example = (tool.profile.get("example_phrases") or [""])[0]
         hint = f" For example: \"{example}\"." if example else ""
-        return reply(f"Which {p.get('description') or p['name'].replace('_', ' ')}?{hint}", "clarify")
+        return reply(f"Which {p.get('description') or p['name'].replace('_', ' ')}?{hint}", "clarify",
+                     service=service, tool=tool)
     needs_ok = not tool.read_only or tool.profile.get("requires_confirmation")
     if needs_ok:
         prompt = render(tool.profile.get("confirmation_prompt"), args) or f"Should I run {tool.title} with {service.name}?"
-        out = reply(prompt, "confirm")
+        out = reply(prompt, "confirm", service=service, tool=tool)
         out["pending"] = {"service_uuid": service.uuid, "tool": tool.name, "arguments": args}
         return out
     return run(service, tool, args)
